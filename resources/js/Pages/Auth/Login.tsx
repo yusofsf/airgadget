@@ -1,97 +1,124 @@
-import { useEffect, FormEventHandler } from 'react';
-import Checkbox from '@/Components/Checkbox';
-import GuestLayout from '@/Layouts/GuestLayout';
-import InputError from '@/Components/InputError';
-import InputLabel from '@/Components/InputLabel';
-import PrimaryButton from '@/Components/PrimaryButton';
-import TextInput from '@/Components/TextInput';
+import { FormEventHandler } from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
+import GuestLayout from '@/Layouts/GuestLayout';
 
-export default function Login({ status, canResetPassword }: { status?: string, canResetPassword: boolean }) {
-    const { data, setData, post, processing, errors, reset } = useForm({
-        email: '',
+type LoginMode = 'identify' | 'login' | 'setup';
+
+export default function Login({
+    status,
+    mode = 'identify',
+    phone = '',
+}: {
+    status?: string;
+    mode?: LoginMode;
+    phone?: string;
+}) {
+    const form = useForm({
+        phone,
         password: '',
-        remember: false,
+        password_confirmation: '',
+        remember: true,
     });
 
-    useEffect(() => {
-        return () => {
-            reset('password');
-        };
-    }, []);
+    const submit: FormEventHandler = (event) => {
+        event.preventDefault();
 
-    const submit: FormEventHandler = (e) => {
-        e.preventDefault();
-
-        post(route('login'));
+        if (mode === 'identify') {
+            form.post(route('login.identify'));
+        } else if (mode === 'setup') {
+            form.post(route('admin.setup-password'));
+        } else {
+            form.post(route('login'));
+        }
     };
+
+    const title = mode === 'setup'
+        ? 'فعال‌سازی حساب مدیر'
+        : mode === 'login'
+            ? 'خوش آمدید'
+            : 'ورود به ایرگجت';
 
     return (
         <GuestLayout>
-            <Head title="Log in" />
+            <Head title={title} />
 
-            {status && <div className="mb-4 font-medium text-sm text-green-600">{status}</div>}
+            <div className="auth-heading" dir="rtl">
+                <span className="auth-kicker">حساب کاربری ایرگجت</span>
+                <h1>{title}</h1>
+                <p>
+                    {mode === 'setup'
+                        ? 'این اولین ورود شماره مدیر است. یک رمز امن برای ورودهای بعدی بسازید.'
+                        : mode === 'login'
+                            ? 'رمز عبور حساب را وارد کنید.'
+                            : 'برای ادامه، شماره موبایل خود را وارد کنید.'}
+                </p>
+            </div>
 
-            <form onSubmit={submit}>
-                <div>
-                    <InputLabel htmlFor="email" value="Email" />
+            {status && <div className="auth-status">{status}</div>}
 
-                    <TextInput
-                        id="email"
-                        type="email"
-                        name="email"
-                        value={data.email}
-                        className="mt-1 block w-full"
-                        autoComplete="username"
-                        isFocused={true}
-                        onChange={(e) => setData('email', e.target.value)}
+            <form className="auth-form" onSubmit={submit} dir="rtl">
+                <label htmlFor="phone">شماره موبایل</label>
+                <div className="auth-phone-row">
+                    <input
+                        id="phone"
+                        type="tel"
+                        inputMode="numeric"
+                        autoComplete="tel"
+                        placeholder="۰۹۱۲۱۲۳۴۵۶۷"
+                        value={form.data.phone}
+                        disabled={mode !== 'identify'}
+                        autoFocus={mode === 'identify'}
+                        onChange={(event) => form.setData('phone', event.target.value)}
                     />
-
-                    <InputError message={errors.email} className="mt-2" />
+                    {mode !== 'identify' && <Link href="/login?change=1">تغییر</Link>}
                 </div>
+                {form.errors.phone && <small className="auth-error">{form.errors.phone}</small>}
 
-                <div className="mt-4">
-                    <InputLabel htmlFor="password" value="Password" />
-
-                    <TextInput
-                        id="password"
-                        type="password"
-                        name="password"
-                        value={data.password}
-                        className="mt-1 block w-full"
-                        autoComplete="current-password"
-                        onChange={(e) => setData('password', e.target.value)}
-                    />
-
-                    <InputError message={errors.password} className="mt-2" />
-                </div>
-
-                <div className="block mt-4">
-                    <label className="flex items-center">
-                        <Checkbox
-                            name="remember"
-                            checked={data.remember}
-                            onChange={(e) => setData('remember', e.target.checked)}
+                {mode !== 'identify' && (
+                    <>
+                        <label htmlFor="password">{mode === 'setup' ? 'رمز عبور جدید' : 'رمز عبور'}</label>
+                        <input
+                            id="password"
+                            type="password"
+                            autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
+                            value={form.data.password}
+                            autoFocus
+                            onChange={(event) => form.setData('password', event.target.value)}
                         />
-                        <span className="ms-2 text-sm text-gray-600">Remember me</span>
+                        {form.errors.password && <small className="auth-error">{form.errors.password}</small>}
+                    </>
+                )}
+
+                {mode === 'setup' && (
+                    <>
+                        <label htmlFor="password_confirmation">تکرار رمز عبور</label>
+                        <input
+                            id="password_confirmation"
+                            type="password"
+                            autoComplete="new-password"
+                            value={form.data.password_confirmation}
+                            onChange={(event) => form.setData('password_confirmation', event.target.value)}
+                        />
+                    </>
+                )}
+
+                {mode === 'login' && (
+                    <label className="auth-remember">
+                        <input
+                            type="checkbox"
+                            checked={form.data.remember}
+                            onChange={(event) => form.setData('remember', event.target.checked)}
+                        />
+                        ورود من را به خاطر بسپار
                     </label>
-                </div>
+                )}
 
-                <div className="flex items-center justify-end mt-4">
-                    {canResetPassword && (
-                        <Link
-                            href={route('password.request')}
-                            className="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                        >
-                            Forgot your password?
-                        </Link>
-                    )}
-
-                    <PrimaryButton className="ms-4" disabled={processing}>
-                        Log in
-                    </PrimaryButton>
-                </div>
+                <button className="auth-submit" disabled={form.processing}>
+                    {form.processing ? 'لطفاً صبر کنید…' : mode === 'identify' ? 'ادامه' : mode === 'setup' ? 'ساخت حساب مدیر' : 'ورود'}
+                </button>
             </form>
+
+            <p className="auth-back"><Link href="/">بازگشت به فروشگاه</Link></p>
         </GuestLayout>
     );
 }
