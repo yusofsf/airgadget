@@ -68,10 +68,20 @@ class ProductController extends Controller
             'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'remove_image_ids' => ['nullable', 'array'],
             'remove_image_ids.*' => ['integer'],
+            'remove_legacy_paths' => ['nullable', 'array', 'max:20'],
+            'remove_legacy_paths.*' => ['string', 'max:1000'],
             'main_image_choice' => ['nullable', 'string', 'max:100'],
         ]);
 
         DB::transaction(function () use ($request, $validated, $product) {
+            $relatedPaths = $product->images()->pluck('path');
+            $legacyPaths = collect([$product->main_image, ...($product->gallery ?? [])])
+                ->filter()
+                ->unique()
+                ->diff($relatedPaths)
+                ->values();
+            $removedLegacyPaths = $legacyPaths->intersect($validated['remove_legacy_paths'] ?? [])->values();
+
             $product->update(collect($validated)->only([
                 'name', 'sku', 'category_id', 'brand_id', 'price', 'sale_price', 'stock',
                 'short_description', 'description', 'meta_title', 'meta_description',
@@ -85,6 +95,9 @@ class ProductController extends Controller
             Storage::disk('public')->delete(
                 $removedImages->pluck('path')->map(fn ($path) => $this->storedImagePath($path))->filter()->all()
             );
+            Storage::disk('public')->delete(
+                $removedLegacyPaths->map(fn ($path) => $this->storedImagePath($path))->filter()->all()
+            );
 
             $newImages = [];
             $nextSortOrder = (int) $product->images()->max('sort_order') + 1;
@@ -97,21 +110,27 @@ class ProductController extends Controller
             }
 
             $images = $product->images()->orderBy('sort_order')->get();
+            $remainingLegacyPaths = $legacyPaths->diff($removedLegacyPaths)->values();
             $choice = $validated['main_image_choice'] ?? null;
             $mainImage = null;
             if ($choice && Str::startsWith($choice, 'existing:')) {
                 $mainImage = $images->firstWhere('id', (int) Str::after($choice, 'existing:'))?->path;
             } elseif ($choice && Str::startsWith($choice, 'new:')) {
                 $mainImage = ($newImages[(int) Str::after($choice, 'new:')] ?? null)?->path;
+            } elseif ($choice && Str::startsWith($choice, 'legacy:')) {
+                $legacyIndex = (int) Str::after($choice, 'legacy:');
+                $selectedLegacyPath = $legacyPaths->get($legacyIndex);
+                $mainImage = $remainingLegacyPaths->contains($selectedLegacyPath) ? $selectedLegacyPath : null;
             }
 
-            if (! $mainImage && $images->contains('path', $product->main_image)) {
+            $allImagePaths = $remainingLegacyPaths->concat($images->pluck('path'))->unique()->values();
+            if (! $mainImage && $allImagePaths->contains($product->main_image)) {
                 $mainImage = $product->main_image;
             }
 
             $product->update([
-                'main_image' => $mainImage ?: $images->first()?->path,
-                'gallery' => $images->pluck('path')->values()->all(),
+                'main_image' => $mainImage ?: $allImagePaths->first(),
+                'gallery' => $allImagePaths->all(),
             ]);
         });
 
@@ -131,7 +150,7 @@ class ProductController extends Controller
         $product->delete();
         Storage::disk('public')->delete($paths);
 
-        return back()->with('status', "محصول «{$name}» حذف شد.");
+        return redirect()->route('admin')->with('status', "محصول «{$name}» حذف شد.");
     }
 
     public function store(Request $request): RedirectResponse

@@ -115,6 +115,7 @@ type ProductEditForm = {
     is_active: boolean;
     images: File[];
     remove_image_ids: number[];
+    remove_legacy_paths: string[];
     main_image_choice: string;
 };
 
@@ -1183,24 +1184,38 @@ function ProductManager({ product }: { product: Product }) {
     const thumbnail = imageUrl(product.main_image || product.images?.[0]?.path || product.gallery?.[0]);
 
     return (
-        <Link className="manage-row product-manage-link" href={route('admin.products.show', product.id)}>
-            <div className="manage-heading">
-                {thumbnail ? <img src={thumbnail} alt={product.name} /> : <div className="manage-placeholder">بدون عکس</div>}
-                <span><b>{product.name}</b><small>{product.sku || 'بدون SKU'}</small></span>
-            </div>
-            <div className="product-manage-meta">
-                <span><small>قیمت اصلی</small><b>{toman(Number(product.price))}</b></span>
-                <span><small>موجودی</small><b>{new Intl.NumberFormat('fa-IR').format(product.stock)} عدد</b></span>
-                <span className={product.is_active === false ? 'inactive' : 'active'}>{product.is_active === false ? 'غیرفعال' : 'فعال'}</span>
-            </div>
-            <strong className="manage-open">مشاهده و ویرایش ←</strong>
-        </Link>
+        <div className="manage-row product-manage-link">
+            <Link className="product-manage-content" href={route('admin.products.show', product.id)}>
+                <div className="manage-heading">
+                    {thumbnail ? <img src={thumbnail} alt={product.name} /> : <div className="manage-placeholder">بدون عکس</div>}
+                    <span><b>{product.name}</b><small>{product.sku || 'بدون SKU'}</small></span>
+                </div>
+                <div className="product-manage-meta">
+                    <span><small>قیمت اصلی</small><b>{toman(Number(product.price))}</b></span>
+                    <span><small>موجودی</small><b>{new Intl.NumberFormat('fa-IR').format(product.stock)} عدد</b></span>
+                    <span className={product.is_active === false ? 'inactive' : 'active'}>{product.is_active === false ? 'غیرفعال' : 'فعال'}</span>
+                </div>
+                <strong className="manage-open">مشاهده و ویرایش ←</strong>
+            </Link>
+            <button type="button" className="danger-button product-list-delete" onClick={() => {
+                if (window.confirm(`محصول «${product.name}» برای همیشه حذف شود؟`)) {
+                    router.delete(route('admin.products.destroy', product.id), { preserveScroll: true });
+                }
+            }}>حذف محصول</button>
+        </div>
     );
 }
 
 function AdminProductEditor({ product, categories, brands }: { product: Product; categories: Category[]; brands: Brand[] }) {
     const currentImages = product.images || [];
     const initialMainImage = currentImages.find((image) => image.path === product.main_image) || currentImages[0];
+    const legacyImages = Array.from(new Set([
+        product.main_image,
+        ...(product.gallery || []),
+    ].filter((path): path is string => Boolean(path))))
+        .filter((path) => !currentImages.some((image) => imageUrl(image.path) === imageUrl(path)))
+        .map((path, index) => ({ path, url: imageUrl(path) || path, index }));
+    const initialLegacyImage = legacyImages.find((image) => image.path === product.main_image) || legacyImages[0];
     const [previews, setPreviews] = useState<string[]>([]);
     const form = useForm<ProductEditForm>({
         _method: 'patch',
@@ -1221,18 +1236,15 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
         is_active: product.is_active !== false,
         images: [],
         remove_image_ids: [],
-        main_image_choice: initialMainImage?.id ? `existing:${initialMainImage.id}` : '',
+        remove_legacy_paths: [],
+        main_image_choice: initialMainImage?.id ? `existing:${initialMainImage.id}` : initialLegacyImage ? `legacy:${initialLegacyImage.index}` : '',
     });
 
     useEffect(() => () => previews.forEach((preview) => URL.revokeObjectURL(preview)), [previews]);
 
     const removed = new Set(form.data.remove_image_ids);
     const visibleCurrentImages = currentImages.filter((image) => image.id && !removed.has(image.id));
-    const legacyImages = Array.from(new Set([
-        product.main_image,
-        ...(product.gallery || []),
-    ].map(imageUrl).filter((path): path is string => Boolean(path))))
-        .filter((path) => !currentImages.some((image) => imageUrl(image.path) === path));
+    const removedLegacy = new Set(form.data.remove_legacy_paths);
 
     const toggleRemoveImage = (image: UploadedImage) => {
         if (!image.id) return;
@@ -1246,6 +1258,17 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
         }
     };
 
+    const toggleRemoveLegacyImage = (path: string, index: number) => {
+        const next = removedLegacy.has(path)
+            ? form.data.remove_legacy_paths.filter((item) => item !== path)
+            : [...form.data.remove_legacy_paths, path];
+        form.setData('remove_legacy_paths', next);
+        if (!removedLegacy.has(path) && form.data.main_image_choice === `legacy:${index}`) {
+            const fallback = legacyImages.find((image) => image.path !== path && !next.includes(image.path));
+            form.setData('main_image_choice', fallback ? `legacy:${fallback.index}` : visibleCurrentImages[0]?.id ? `existing:${visibleCurrentImages[0].id}` : previews.length ? 'new:0' : '');
+        }
+    };
+
     const submit = (event: FormEvent) => {
         event.preventDefault();
         form.post(route('admin.products.update', product.id), {
@@ -1256,6 +1279,7 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                 setPreviews([]);
                 form.setData('images', []);
                 form.setData('remove_image_ids', []);
+                form.setData('remove_legacy_paths', []);
             },
         });
     };
@@ -1304,7 +1328,11 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                                 <button type="button" onClick={() => toggleRemoveImage(image)}>{removed.has(image.id || 0) ? 'بازگردانی' : 'حذف عکس'}</button>
                             </div>
                         ))}
-                        {legacyImages.map((path) => <div key={path}><img src={path} alt={product.name} /><small>تصویر قدیمی محصول</small></div>)}
+                        {legacyImages.map((image) => <div className={removedLegacy.has(image.path) ? 'removed' : ''} key={image.path}>
+                            <img src={image.url} alt={product.name} />
+                            <label><input type="radio" name="editor-main-image" disabled={removedLegacy.has(image.path)} checked={form.data.main_image_choice === `legacy:${image.index}`} onChange={() => form.setData('main_image_choice', `legacy:${image.index}`)} /> عکس اصلی</label>
+                            <button type="button" onClick={() => toggleRemoveLegacyImage(image.path, image.index)}>{removedLegacy.has(image.path) ? 'بازگردانی' : 'حذف عکس'}</button>
+                        </div>)}
                     </div>}
                     <label className="upload-box">
                         <span>افزودن تصاویر جدید</span>

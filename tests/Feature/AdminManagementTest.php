@@ -148,4 +148,34 @@ test('admin can open the complete product editor and upload a visible main image
     $this->get($product->main_image)
         ->assertOk()
         ->assertHeader('cache-control', 'immutable, max-age=31536000, public');
+
+    $oldImageId = $product->images->first()->id;
+    $this->actingAs($admin)
+        ->post(route('admin.products.update', $product), [
+            '_method' => 'patch',
+            'name' => 'محصول ویرایش‌شده',
+            'sku' => 'EDIT-100',
+            'category_id' => $category->id,
+            'price' => 650000,
+            'stock' => 5,
+            'is_active' => true,
+            'remove_image_ids' => [$oldImageId],
+            'main_image_choice' => 'new:0',
+            'images' => [UploadedFile::fake()->image('replacement.webp', 800, 800)],
+        ])
+        ->assertSessionHasNoErrors();
+
+    $product->refresh()->load('images');
+    $replacementPath = 'products/'.basename($product->main_image);
+    expect($product->images)->toHaveCount(1)
+        ->and($product->main_image)->not->toBe('/product-images/'.basename($storedPath));
+    Storage::disk('public')->assertMissing($storedPath);
+    Storage::disk('public')->assertExists($replacementPath);
+
+    $this->actingAs($admin)
+        ->delete(route('admin.products.destroy', $product))
+        ->assertRedirect(route('admin'));
+
+    $this->assertDatabaseMissing('products', ['id' => $product->id]);
+    Storage::disk('public')->assertMissing($replacementPath);
 });
