@@ -11,6 +11,7 @@ the PHP application:
 ```sh
 npm ci
 npm run build
+php artisan migrate --force
 php artisan optimize:clear
 php artisan optimize
 ```

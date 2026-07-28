@@ -29,8 +29,16 @@ class StoreController extends Controller {
   $accounting=['received'=>0,'product_revenue'=>0,'shipping_revenue'=>0,'sold_items'=>0,'paid_orders'=>0,'pending_orders'=>0];
   $orders=collect();
   if($hasOrders){
-   $paid=Order::where(fn($query)=>$query->whereNotNull('paid_at')->orWhereIn('status',['processing','completed']));
-   $accounting=['received'=>(clone $paid)->sum('total'),'product_revenue'=>(clone $paid)->selectRaw('COALESCE(SUM(subtotal - discount), 0) total')->value('total'),'shipping_revenue'=>(clone $paid)->sum('shipping_cost'),'sold_items'=>(int) (clone $paid)->withSum('items','quantity')->get()->sum('items_sum_quantity'),'paid_orders'=>(clone $paid)->count(),'pending_orders'=>Order::where('status','pending_payment')->count()];
+   $paid=Order::query();
+   if(Schema::hasColumn('orders','paid_at')){
+    $paid->where(fn($query)=>$query->whereNotNull('paid_at')->orWhereIn('status',['processing','completed']));
+   }else{
+    $paid->whereIn('status',['processing','completed']);
+   }
+   $soldItems=Schema::hasColumn('order_items','quantity')
+    ? (int) (clone $paid)->withSum('items','quantity')->get()->sum('items_sum_quantity')
+    : 0;
+   $accounting=['received'=>(clone $paid)->sum('total'),'product_revenue'=>(clone $paid)->selectRaw('COALESCE(SUM(subtotal - discount), 0) total')->value('total'),'shipping_revenue'=>(clone $paid)->sum('shipping_cost'),'sold_items'=>$soldItems,'paid_orders'=>(clone $paid)->count(),'pending_orders'=>Order::where('status','pending_payment')->count()];
    $orders=Order::with(['items','user'])->latest()->take(30)->get();
   }
   return Inertia::render('Storefront',['view'=>'admin','products'=>Product::with(['brand','category','images'])->latest()->get(),'articles'=>Article::with('tags')->latest()->get(),'categories'=>Category::orderBy('name')->get(['id','name']),'brands'=>Brand::orderBy('name')->get(['id','name']),'accounting'=>$accounting,'orders'=>$orders,'shippingMethods'=>StoreSetting::shippingMethods()]);
