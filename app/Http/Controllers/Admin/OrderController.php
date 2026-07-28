@@ -8,10 +8,31 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
+use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class OrderController extends Controller
 {
+    public function index(): Response
+    {
+        return Inertia::render('Storefront', [
+            'view' => 'admin-orders',
+            'orders' => Order::withCount('items')
+                ->withSum('items', 'quantity')
+                ->latest()
+                ->paginate(25),
+        ]);
+    }
+
+    public function show(Order $order): Response
+    {
+        return Inertia::render('Storefront', [
+            'view' => 'admin-order',
+            'adminOrder' => $order->load(['items', 'user']),
+        ]);
+    }
+
     public function updateStatus(Request $request, Order $order): RedirectResponse
     {
         $validated = $request->validate([

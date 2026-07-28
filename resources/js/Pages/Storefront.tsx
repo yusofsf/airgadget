@@ -43,7 +43,8 @@ type Article = {
     tags?: Tag[];
 };
 type ShippingMethod = { code: string; name: string; description: string; cost: number; is_active: boolean };
-type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; total: number; shipping_method: string; payment_method?: string; payment_receipt?: string; card_to_card_amount?: number; payment_reference?: string; paid_at?: string; created_at: string; address?: { first_name?: string; last_name?: string; customer_name?: string; phone?: string; postal_code?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; price?: number; quantity: number }[]; user?: { first_name?: string; phone_number?: string } };
+type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; tax?: number; total: number; shipping_method: string; payment_method?: string; payment_receipt?: string; card_to_card_amount?: number; payment_reference?: string; paid_at?: string; created_at: string; updated_at?: string; items_count?: number; items_sum_quantity?: number; address?: { first_name?: string; last_name?: string; customer_name?: string; phone?: string; postal_code?: string; province?: string; city?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; price?: number; quantity: number }[]; user?: { first_name?: string; last_name?: string; phone_number?: string; email?: string } };
+type PaginatedOrders = { data: Order[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
 type Accounting = { received: number; product_revenue: number; shipping_revenue: number; sold_items: number; paid_orders: number; pending_orders: number };
 type CardProduct = {
     id: number;
@@ -85,13 +86,11 @@ type AdminForm = {
 };
 type ArticleForm = {
     title: string;
-    topic: string;
     excerpt: string;
     body: string;
     tags: string;
     meta_title: string;
     meta_description: string;
-    meta_keywords: string;
     main_image: File | null;
 };
 
@@ -138,6 +137,7 @@ export default function Storefront({
     shippingMethods = [],
     accounting = {},
     orders = [],
+    adminOrder,
     invoice,
     invoiceShipping,
     trackedOrder,
@@ -196,7 +196,7 @@ export default function Storefront({
             ? 'فروشگاه'
             : view === 'articles'
               ? 'مجله ایرگجت'
-              : view === 'admin'
+              : view === 'admin' || view === 'admin-orders' || view === 'admin-order'
                 ? 'مدیریت فروشگاه'
                 : view === 'account'
                   ? 'حساب کاربری'
@@ -323,7 +323,11 @@ export default function Storefront({
                 ) : view === 'product' ? (
                     <ProductDetail product={product} add={addToCart} />
                 ) : view === 'admin' ? (
-                    <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} accounting={accounting} orders={orders} shippingMethods={shippingMethods} />
+                    <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} accounting={accounting} shippingMethods={shippingMethods} />
+                ) : view === 'admin-orders' ? (
+                    <AdminOrders orders={orders} />
+                ) : view === 'admin-order' ? (
+                    <AdminOrderDetail order={adminOrder} />
                 ) : view === 'account' ? (
                     <Account orders={orders} auth={auth} />
                 ) : view === 'checkout' ? (
@@ -897,7 +901,6 @@ function Admin({
     categories,
     brands,
     accounting,
-    orders,
     shippingMethods,
 }: {
     products: Product[];
@@ -905,7 +908,6 @@ function Admin({
     categories: Category[];
     brands: Brand[];
     accounting: Accounting;
-    orders: Order[];
     shippingMethods: ShippingMethod[];
 }) {
     const { props } = usePage<any>();
@@ -932,13 +934,11 @@ function Admin({
     });
     const articleForm = useForm<ArticleForm>({
         title: '',
-        topic: '',
         excerpt: '',
         body: '',
         tags: '',
         meta_title: '',
         meta_description: '',
-        meta_keywords: '',
         main_image: null,
     });
     const submit = (event: FormEvent) => {
@@ -974,6 +974,7 @@ function Admin({
             {props.flash?.status && <div className="admin-status">{props.flash.status}</div>}
             <div className="admin-tabs">
                 <button className={tab === 'accounting' ? 'active' : ''} onClick={() => setTab('accounting')}>حسابداری مدیریت</button>
+                <Link href={route('admin.orders.index')}>مدیریت سفارشات</Link>
                 <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}>مدیریت محصولات</button>
                 <button className={tab === 'articles' ? 'active' : ''} onClick={() => setTab('articles')}>مدیریت مقالات</button>
                 <button className={tab === 'shipping' ? 'active' : ''} onClick={() => setTab('shipping')}>مدیریت ارسال</button>
@@ -990,7 +991,7 @@ function Admin({
                     <form className="admin-form" onSubmit={submit}>
                         {Object.keys(errors).length > 0 && (
                             <div className="form-error-box">
-                                لطفاً خطاهای فرم را بررسی کنید. برای ثبت سریع، فقط نام محصول کافی است و SKU، قیمت و موجودی می‌توانند خالی بمانند.
+                                لطفاً خطاهای فرم را بررسی کنید. نام و قیمت اصلی محصول الزامی هستند؛ SKU و موجودی می‌توانند خالی بمانند.
                             </div>
                         )}
                         <input value={data.name} onChange={(event) => setData('name', event.target.value)} placeholder="نام محصول" />
@@ -1016,7 +1017,7 @@ function Admin({
                             <input value={data.brand_name} onChange={(event) => setData('brand_name', event.target.value)} placeholder="نام برند جدید" />
                         </div>
                         <div className="admin-two">
-                            <input value={data.price} onChange={(event) => setData('price', event.target.value)} inputMode="numeric" placeholder="قیمت اختیاری" />
+                            <input required value={data.price} onChange={(event) => setData('price', event.target.value)} inputMode="numeric" placeholder="قیمت اصلی (الزامی)" />
                             <input
                                 value={data.sale_price}
                                 onChange={(event) => setData('sale_price', event.target.value)}
@@ -1085,15 +1086,12 @@ function Admin({
                         {Object.keys(articleForm.errors).length > 0 && <div className="form-error-box">لطفاً خطاهای مقاله را بررسی کنید.</div>}
                         <input value={articleForm.data.title} onChange={(event) => articleForm.setData('title', event.target.value)} placeholder="عنوان مقاله" />
                         {articleForm.errors.title && <small className="form-error">{articleForm.errors.title}</small>}
-                        <input value={articleForm.data.topic} onChange={(event) => articleForm.setData('topic', event.target.value)} placeholder="موضوع مقاله، مثل راهنمای خرید" />
-                        {articleForm.errors.topic && <small className="form-error">{articleForm.errors.topic}</small>}
                         <input value={articleForm.data.tags} onChange={(event) => articleForm.setData('tags', event.target.value)} placeholder="تگ‌ها با ویرگول، مثل ایرپاد، شارژر" />
                         <textarea value={articleForm.data.excerpt} onChange={(event) => articleForm.setData('excerpt', event.target.value)} placeholder="خلاصه مقاله" />
                         <textarea value={articleForm.data.body} onChange={(event) => articleForm.setData('body', event.target.value)} placeholder="متن کامل مقاله" />
                         {articleForm.errors.body && <small className="form-error">{articleForm.errors.body}</small>}
                         <input value={articleForm.data.meta_title} onChange={(event) => articleForm.setData('meta_title', event.target.value)} placeholder="عنوان سئو مقاله" />
                         <textarea value={articleForm.data.meta_description} onChange={(event) => articleForm.setData('meta_description', event.target.value)} placeholder="توضیحات متا مقاله" />
-                        <input value={articleForm.data.meta_keywords} onChange={(event) => articleForm.setData('meta_keywords', event.target.value)} placeholder="کلمات کلیدی مقاله" />
                         <label className="upload-box">
                             <span>عکس اصلی مقاله</span>
                             <small>این عکس در لیست مقاله‌ها و Open Graph استفاده می‌شود.</small>
@@ -1127,7 +1125,7 @@ function Admin({
                     <AdminArticles articles={articles} />
                 </section>
             </div>
-            {tab === 'accounting' && <AccountingPanel accounting={accounting} orders={orders} />}
+            {tab === 'accounting' && <AccountingPanel accounting={accounting} />}
             {tab === 'shipping' && <ShippingPanel methods={shippingMethods} />}
         </main>
     );
@@ -1183,7 +1181,7 @@ function AdminArticles({ articles }: { articles: Article[] }) {
 }
 
 function ArticleManager({ article }: { article: Article }) {
-    const form = useForm({ title: article.title, topic: article.topic || '', excerpt: article.excerpt || '', body: article.body || '', is_published: article.is_published !== false });
+    const form = useForm({ title: article.title, excerpt: article.excerpt || '', body: article.body || '', is_published: article.is_published !== false });
 
     return (
         <form className="manage-row" onSubmit={(event) => { event.preventDefault(); form.patch(route('admin.articles.update', article.id), { preserveScroll: true }); }}>
@@ -1192,11 +1190,10 @@ function ArticleManager({ article }: { article: Article }) {
                 <span><b>{article.title}</b><small>{article.tags?.map((tag) => `#${tag.name}`).join(' ') || 'بدون تگ'}</small></span>
             </div>
             <input value={form.data.title} onChange={(event) => form.setData('title', event.target.value)} placeholder="عنوان" />
-            <input value={form.data.topic} onChange={(event) => form.setData('topic', event.target.value)} placeholder="موضوع" />
             <textarea value={form.data.excerpt} onChange={(event) => form.setData('excerpt', event.target.value)} placeholder="خلاصه" />
             <textarea value={form.data.body} onChange={(event) => form.setData('body', event.target.value)} placeholder="متن مقاله" />
             <label className="admin-check"><input type="checkbox" checked={form.data.is_published} onChange={(event) => form.setData('is_published', event.target.checked)} /> مقاله منتشر باشد</label>
-            {Object.keys(form.errors).length > 0 && <small className="form-error">عنوان، موضوع و متن مقاله را بررسی کنید.</small>}
+            {Object.keys(form.errors).length > 0 && <small className="form-error">عنوان و متن مقاله را بررسی کنید.</small>}
             <div className="manage-actions">
                 <button className="primary" disabled={form.processing}>ذخیره تغییرات</button>
                 <button type="button" className="danger-button" onClick={() => { if (window.confirm(`مقاله «${article.title}» حذف شود؟`)) router.delete(route('admin.articles.destroy', article.id), { preserveScroll: true }); }}>حذف مقاله</button>
@@ -1205,8 +1202,7 @@ function ArticleManager({ article }: { article: Article }) {
     );
 }
 
-function AccountingPanel({ accounting, orders }: { accounting: Accounting; orders: Order[] }) {
-    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', unpaid: 'پرداخت‌نشده', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
+function AccountingPanel({ accounting }: { accounting: Accounting }) {
     return (
         <section className="admin-panel">
             <div className="accounting-cards">
@@ -1217,35 +1213,163 @@ function AccountingPanel({ accounting, orders }: { accounting: Accounting; order
                 <div><small>سفارش پرداخت‌شده</small><b>{new Intl.NumberFormat('fa-IR').format(accounting.paid_orders || 0)}</b></div>
                 <div><small>در انتظار پرداخت/بررسی</small><b>{new Intl.NumberFormat('fa-IR').format(accounting.pending_orders || 0)}</b></div>
             </div>
-            <h2>سفارش‌ها و وضعیت مالی</h2>
-            <div className="orders-table">
-                {orders.length ? orders.map((order) => (
-                    <article key={order.id}>
-                        <div className="admin-order-head">
-                            <span><b>سفارش {order.number}</b><small>{order.address?.customer_name || 'مهمان'} · {new Intl.DateTimeFormat('fa-IR').format(new Date(order.created_at))}</small></span>
-                            <span><b>{toman(Number(order.total))}</b><small>{order.items?.reduce((sum, item) => sum + Number(item.quantity), 0) || 0} کالا</small></span>
-                            <select value={order.status} onChange={(event) => router.patch(route('admin.orders.status', order.id), { status: event.target.value }, { preserveScroll: true })}>
-                                {Object.entries(labels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-                            </select>
-                        </div>
-                        <div className="admin-order-customer">
-                            <span><b>مشتری:</b> {order.address?.customer_name}</span>
-                            <span><b>موبایل:</b> {order.address?.phone}</span>
-                            <span><b>کد پستی:</b> {order.address?.postal_code}</span>
-                            <span className="wide"><b>آدرس:</b> {order.address?.full}</span>
-                        </div>
-                        <div className="admin-order-items">
-                            {order.items?.map((item) => <p key={item.id || item.sku}><span>{item.name}</span><span>{item.quantity} عدد</span><span>واحد: {toman(Number(item.price || 0))}</span><b>کل: {toman(Number(item.price || 0) * item.quantity)}</b></p>)}
-                        </div>
-                        <div className="admin-order-actions">
-                            <span>ارسال: {toman(Number(order.shipping_cost || 0))} · جمع کل: <b>{toman(Number(order.total))}</b></span>
-                            {order.payment_method === 'card_to_card' && <span className="receipt-summary">واریزی اعلام‌شده: <b>{toman(Number(order.card_to_card_amount || 0))}</b>{order.payment_receipt && <a href={route('admin.orders.receipt', order.id)} target="_blank" rel="noreferrer">مشاهده فیش</a>}</span>}
-                            {order.invoice_token && <><Link href={`/orders/${order.id}/invoice/${order.invoice_token}`}>فاکتور</Link><a href={`/orders/${order.id}/invoice/${order.invoice_token}/pdf`} target="_blank" rel="noreferrer">PDF فاکتور</a></>}
-                        </div>
-                    </article>
-                )) : <p>هنوز سفارشی ثبت نشده است؛ آمار مالی صفر و واقعی است.</p>}
+            <div className="accounting-orders-link">
+                <span>برای مشاهده، بررسی و تغییر وضعیت سفارش‌ها وارد بخش مدیریت سفارشات شوید.</span>
+                <Link className="primary" href={route('admin.orders.index')}>مدیریت سفارشات</Link>
             </div>
         </section>
+    );
+}
+
+const orderStatusLabels: Record<string, string> = {
+    pending_payment: 'در انتظار پرداخت',
+    unpaid: 'پرداخت‌نشده',
+    pending_review: 'در انتظار بررسی',
+    processing: 'در حال پردازش',
+    completed: 'تکمیل و ارسال شده',
+    cancelled: 'لغو شده',
+    failed: 'پرداخت ناموفق',
+    refunded: 'مرجوع شده',
+};
+
+const shippingLabels: Record<string, string> = {
+    mashhad_courier: 'پیک مشهد',
+    pickup: 'تحویل حضوری',
+    post: 'ارسال پستی',
+};
+
+const paymentLabels: Record<string, string> = {
+    zarinpal: 'پرداخت آنلاین زرین‌پال',
+    card_to_card: 'کارت به کارت',
+};
+
+function AdminOrders({ orders }: { orders: PaginatedOrders | Order[] }) {
+    const pagination = Array.isArray(orders) ? null : orders;
+    const items = Array.isArray(orders) ? orders : orders?.data || [];
+
+    return (
+        <main className="page admin admin-orders-page">
+            <div className="admin-page-heading">
+                <div>
+                    <small>پنل مدیریت</small>
+                    <h1>مدیریت سفارشات</h1>
+                    <p>فهرست خلاصه همه سفارش‌ها؛ برای مشاهده اطلاعات کامل روی هر سفارش کلیک کنید.</p>
+                </div>
+                <Link className="secondary-link" href={route('admin')}>بازگشت به پنل مدیریت</Link>
+            </div>
+            <div className="order-summary-list">
+                {items.length ? items.map((order) => (
+                    <Link className="order-summary-row" href={route('admin.orders.show', order.id)} key={order.id}>
+                        <span>
+                            <small>شماره سفارش</small>
+                            <b dir="ltr">{order.number}</b>
+                        </span>
+                        <span>
+                            <small>مشتری</small>
+                            <b>{order.address?.customer_name || `${order.address?.first_name || ''} ${order.address?.last_name || ''}`.trim() || 'مهمان'}</b>
+                            <em dir="ltr">{order.address?.phone}</em>
+                        </span>
+                        <span>
+                            <small>تاریخ ثبت</small>
+                            <b>{new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(order.created_at))}</b>
+                        </span>
+                        <span>
+                            <small>تعداد کالا</small>
+                            <b>{new Intl.NumberFormat('fa-IR').format(Number(order.items_sum_quantity || order.items_count || 0))}</b>
+                        </span>
+                        <span>
+                            <small>مبلغ کل</small>
+                            <b className="order-total">{toman(Number(order.total))}</b>
+                        </span>
+                        <strong className={`order-status status-${order.status}`}>{orderStatusLabels[order.status] || order.status}</strong>
+                        <i aria-hidden="true">←</i>
+                    </Link>
+                )) : <div className="empty-orders">هنوز سفارشی ثبت نشده است.</div>}
+            </div>
+            {pagination && pagination.last_page > 1 && (
+                <nav className="order-pagination" aria-label="صفحه‌بندی سفارشات">
+                    {pagination.prev_page_url ? <Link href={pagination.prev_page_url}>صفحه قبل</Link> : <span>صفحه قبل</span>}
+                    <b>صفحه {new Intl.NumberFormat('fa-IR').format(pagination.current_page)} از {new Intl.NumberFormat('fa-IR').format(pagination.last_page)}</b>
+                    {pagination.next_page_url ? <Link href={pagination.next_page_url}>صفحه بعد</Link> : <span>صفحه بعد</span>}
+                </nav>
+            )}
+        </main>
+    );
+}
+
+function AdminOrderDetail({ order }: { order: Order }) {
+    if (!order) return <main className="page"><p>سفارش پیدا نشد.</p></main>;
+    const customerName = order.address?.customer_name || `${order.address?.first_name || ''} ${order.address?.last_name || ''}`.trim() || 'مهمان';
+
+    return (
+        <main className="page admin admin-order-detail">
+            <div className="admin-page-heading">
+                <div>
+                    <small>جزئیات کامل سفارش</small>
+                    <h1 dir="ltr">{order.number}</h1>
+                    <p>ثبت‌شده در {new Intl.DateTimeFormat('fa-IR', { dateStyle: 'full', timeStyle: 'short' }).format(new Date(order.created_at))}</p>
+                </div>
+                <Link className="secondary-link" href={route('admin.orders.index')}>بازگشت به سفارشات</Link>
+            </div>
+
+            <section className="order-detail-status">
+                <label>
+                    <span>وضعیت سفارش</span>
+                    <select value={order.status} onChange={(event) => router.patch(route('admin.orders.status', order.id), { status: event.target.value }, { preserveScroll: true })}>
+                        {Object.entries(orderStatusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                    </select>
+                </label>
+                <strong className={`order-status status-${order.status}`}>{orderStatusLabels[order.status] || order.status}</strong>
+            </section>
+
+            <div className="order-detail-grid">
+                <section className="order-detail-card">
+                    <h2>اطلاعات مشتری و تحویل</h2>
+                    <dl>
+                        <div><dt>نام مشتری</dt><dd>{customerName}</dd></div>
+                        <div><dt>شماره موبایل</dt><dd dir="ltr">{order.address?.phone || order.user?.phone_number || '—'}</dd></div>
+                        <div><dt>استان و شهر</dt><dd>{[order.address?.province, order.address?.city].filter(Boolean).join('، ') || '—'}</dd></div>
+                        <div><dt>کد پستی</dt><dd dir="ltr">{order.address?.postal_code || '—'}</dd></div>
+                        <div className="wide"><dt>آدرس کامل</dt><dd>{order.address?.full || '—'}</dd></div>
+                    </dl>
+                </section>
+                <section className="order-detail-card">
+                    <h2>پرداخت و ارسال</h2>
+                    <dl>
+                        <div><dt>روش پرداخت</dt><dd>{paymentLabels[order.payment_method || ''] || order.payment_method || '—'}</dd></div>
+                        <div><dt>روش ارسال</dt><dd>{shippingLabels[order.shipping_method] || order.shipping_method}</dd></div>
+                        <div><dt>شناسه پرداخت</dt><dd dir="ltr">{order.payment_reference || '—'}</dd></div>
+                        <div><dt>زمان پرداخت</dt><dd>{order.paid_at ? new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(order.paid_at)) : 'پرداخت نشده'}</dd></div>
+                        {order.payment_method === 'card_to_card' && <div><dt>مبلغ اعلامی</dt><dd>{toman(Number(order.card_to_card_amount || 0))}</dd></div>}
+                        {order.payment_receipt && <div><dt>فیش واریز</dt><dd><a href={route('admin.orders.receipt', order.id)} target="_blank" rel="noreferrer">مشاهده فیش پرداخت</a></dd></div>}
+                    </dl>
+                </section>
+            </div>
+
+            <section className="order-detail-card order-detail-items">
+                <h2>اقلام سفارش</h2>
+                <div className="order-items-head"><span>محصول</span><span>تعداد</span><span>قیمت واحد</span><span>قیمت کل</span></div>
+                {order.items?.map((item) => (
+                    <div className="order-item-row" key={item.id || item.sku}>
+                        <span><b>{item.name}</b><small dir="ltr">{item.sku}</small></span>
+                        <span>{new Intl.NumberFormat('fa-IR').format(item.quantity)}</span>
+                        <span>{toman(Number(item.price || 0))}</span>
+                        <strong>{toman(Number(item.price || 0) * item.quantity)}</strong>
+                    </div>
+                ))}
+            </section>
+
+            <section className="order-detail-card order-detail-totals">
+                <p><span>جمع کالاها</span><b>{toman(Number(order.subtotal || 0))}</b></p>
+                <p><span>تخفیف</span><b>{toman(Number(order.discount || 0))}</b></p>
+                <p><span>هزینه ارسال</span><b>{toman(Number(order.shipping_cost || 0))}</b></p>
+                {Number(order.tax || 0) > 0 && <p><span>مالیات</span><b>{toman(Number(order.tax))}</b></p>}
+                <p className="grand"><span>مبلغ نهایی</span><b>{toman(Number(order.total))}</b></p>
+                <div className="admin-order-actions">
+                    {order.invoice_token && <><Link href={`/orders/${order.id}/invoice/${order.invoice_token}`}>مشاهده فاکتور</Link><a href={`/orders/${order.id}/invoice/${order.invoice_token}/pdf`} target="_blank" rel="noreferrer">دریافت PDF فاکتور</a></>}
+                </div>
+            </section>
+        </main>
     );
 }
 

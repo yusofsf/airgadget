@@ -16,7 +16,6 @@ class ArticleController extends Controller
     {
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
-            'topic' => ['required', 'string', 'max:255'],
             'excerpt' => ['nullable', 'string', 'max:1000'],
             'body' => ['required', 'string'],
             'is_published' => ['required', 'boolean'],
@@ -46,20 +45,17 @@ class ArticleController extends Controller
     {
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
-            'topic' => ['required', 'string', 'max:255'],
             'excerpt' => ['nullable', 'string', 'max:1000'],
             'body' => ['required', 'string'],
             'tags' => ['nullable', 'string', 'max:1000'],
             'meta_title' => ['nullable', 'string', 'max:255'],
             'meta_description' => ['nullable', 'string', 'max:500'],
-            'meta_keywords' => ['nullable', 'string', 'max:500'],
             'main_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
         ]);
 
         $article = Article::create([
             'title' => $validated['title'],
             'slug' => $this->uniqueSlug($validated['title']),
-            'topic' => $validated['topic'],
             'excerpt' => $validated['excerpt'] ?? null,
             'body' => $validated['body'],
             'image' => $request->file('main_image')
@@ -67,7 +63,6 @@ class ArticleController extends Controller
                 : null,
             'meta_title' => $validated['meta_title'] ?? $validated['title'],
             'meta_description' => $validated['meta_description'] ?? ($validated['excerpt'] ?? null),
-            'meta_keywords' => $validated['meta_keywords'] ?? $validated['tags'] ?? null,
             'is_published' => true,
             'published_at' => now(),
         ]);
