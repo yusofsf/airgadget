@@ -18,6 +18,9 @@ type Product = {
     meta_description?: string | null;
     meta_keywords?: string | null;
     canonical_url?: string | null;
+    gallery?: string[] | null;
+    weight?: number | null;
+    dimensions?: string | null;
     brand?: Brand | null;
     category?: Category | null;
     main_image?: string | null;
@@ -93,12 +96,39 @@ type ArticleForm = {
     meta_description: string;
     main_image: File | null;
 };
+type ProductEditForm = {
+    _method: 'patch';
+    name: string;
+    sku: string;
+    category_id: string;
+    brand_id: string;
+    price: string;
+    sale_price: string;
+    stock: string;
+    short_description: string;
+    description: string;
+    meta_title: string;
+    meta_description: string;
+    meta_keywords: string;
+    weight: string;
+    dimensions: string;
+    is_active: boolean;
+    images: File[];
+    remove_image_ids: number[];
+    main_image_choice: string;
+};
 
 const supportPhone = '09205850190';
 const storeAddress = 'خراسان رضوی، مشهد، عبدالمطلب ۳۵';
 const siteTitle = 'ایرگجت | لوازم جانبی موبایل';
 const siteDescription = 'خرید مطمئن لوازم جانبی موبایل، ایرپاد و گجت با ارسال سریع از ایرگجت مشهد';
 const toman = (n: number) => new Intl.NumberFormat('fa-IR').format(n) + ' تومان';
+const imageUrl = (path?: string | null) => {
+    if (!path) return undefined;
+    if (/^(https?:)?\/\//i.test(path) || path.startsWith('/')) return path;
+    const normalized = path.replace(/^public\//, 'storage/').replace(/^storage\/app\/public\//, 'storage/');
+    return `/${normalized}`;
+};
 const toCard = (p: Product): CardProduct => ({
     id: p.id,
     name: p.name,
@@ -108,7 +138,7 @@ const toCard = (p: Product): CardProduct => ({
     brand: p.brand?.name || 'بدون برند',
     color: p.attributes?.color || 'مشکی',
     stock: Number(p.stock || 0),
-    image: p.main_image || p.images?.[0]?.path,
+    image: imageUrl(p.main_image || p.images?.[0]?.path || p.gallery?.[0]),
 });
 const readStoredCart = (): StoredCart => {
     if (typeof window === 'undefined') return { items: [], expiresAt: null };
@@ -138,6 +168,7 @@ export default function Storefront({
     accounting = {},
     orders = [],
     adminOrder,
+    adminProduct,
     invoice,
     invoiceShipping,
     trackedOrder,
@@ -196,7 +227,7 @@ export default function Storefront({
             ? 'فروشگاه'
             : view === 'articles'
               ? 'مجله ایرگجت'
-              : view === 'admin' || view === 'admin-orders' || view === 'admin-order'
+              : view === 'admin' || view === 'admin-orders' || view === 'admin-order' || view === 'admin-product'
                 ? 'مدیریت فروشگاه'
                 : view === 'account'
                   ? 'حساب کاربری'
@@ -328,6 +359,8 @@ export default function Storefront({
                     <AdminOrders orders={orders} />
                 ) : view === 'admin-order' ? (
                     <AdminOrderDetail order={adminOrder} />
+                ) : view === 'admin-product' ? (
+                    <AdminProductEditor product={adminProduct} categories={categories} brands={brands} />
                 ) : view === 'account' ? (
                     <Account orders={orders} auth={auth} />
                 ) : view === 'checkout' ? (
@@ -469,7 +502,7 @@ function resolveSeo(view: string, product?: Product, article?: Article): SeoMeta
             title: product.meta_title || `${product.name} | ایرگجت`,
             description: product.meta_description || product.short_description || `خرید ${product.name} از ایرگجت با پشتیبانی ${supportPhone}`,
             keywords: product.meta_keywords || undefined,
-            image: product.main_image || product.images?.[0]?.path || undefined,
+            image: imageUrl(product.main_image || product.images?.[0]?.path || product.gallery?.[0]),
             canonical: product.canonical_url || undefined,
         };
     }
@@ -508,6 +541,13 @@ function resolveSeo(view: string, product?: Product, article?: Article): SeoMeta
 }
 
 function ProductDetail({ product, add }: { product: Product; add: (product: CardProduct) => void }) {
+    const gallery = Array.from(new Set([
+        product?.main_image,
+        ...(product?.images?.map((image) => image.path) || []),
+        ...(product?.gallery || []),
+    ].map(imageUrl).filter((path): path is string => Boolean(path))));
+    const [selectedImage, setSelectedImage] = useState<string | undefined>(() => gallery[0]);
+
     if (!product) {
         return <main className="page"><h1>محصول پیدا نشد</h1></main>;
     }
@@ -518,10 +558,10 @@ function ProductDetail({ product, add }: { product: Product; add: (product: Card
         <main className="page product-detail">
             <div className="product-detail-grid">
                 <section className="product-gallery">
-                    {card.image ? <img src={card.image} alt={product.name} /> : <div className="photo-placeholder">بدون عکس</div>}
-                    {product.images && product.images.length > 1 && (
+                    {selectedImage || card.image ? <img src={selectedImage || card.image} alt={product.name} /> : <div className="photo-placeholder">بدون عکس</div>}
+                    {gallery.length > 1 && (
                         <div className="thumbs">
-                            {product.images.map((image) => <img src={image.path} alt={product.name} key={image.id || image.path} />)}
+                            {gallery.map((path) => <button className={selectedImage === path ? 'active' : ''} onClick={() => setSelectedImage(path)} key={path}><img src={path} alt={product.name} /></button>)}
                         </div>
                     )}
                 </section>
@@ -1140,35 +1180,164 @@ function AdminProducts({ products }: { products: Product[] }) {
 }
 
 function ProductManager({ product }: { product: Product }) {
-    const form = useForm({
-        name: product.name,
-        price: String(product.price || 0),
-        sale_price: product.sale_price ? String(product.sale_price) : '',
-        stock: String(product.stock || 0),
-        is_active: product.is_active !== false,
-    });
+    const thumbnail = imageUrl(product.main_image || product.images?.[0]?.path || product.gallery?.[0]);
 
     return (
-        <form className="manage-row" onSubmit={(event) => { event.preventDefault(); form.patch(route('admin.products.update', product.id), { preserveScroll: true }); }}>
+        <Link className="manage-row product-manage-link" href={route('admin.products.show', product.id)}>
             <div className="manage-heading">
-                {product.main_image ? <img src={product.main_image} alt={product.name} /> : <div className="manage-placeholder" />}
+                {thumbnail ? <img src={thumbnail} alt={product.name} /> : <div className="manage-placeholder">بدون عکس</div>}
                 <span><b>{product.name}</b><small>{product.sku || 'بدون SKU'}</small></span>
             </div>
-            <input value={form.data.name} onChange={(event) => form.setData('name', event.target.value)} aria-label="نام محصول" />
-            <div className="admin-two">
-                <input value={form.data.price} onChange={(event) => form.setData('price', event.target.value)} inputMode="numeric" placeholder="قیمت" />
-                <input value={form.data.sale_price} onChange={(event) => form.setData('sale_price', event.target.value)} inputMode="numeric" placeholder="قیمت تخفیفی" />
+            <div className="product-manage-meta">
+                <span><small>قیمت اصلی</small><b>{toman(Number(product.price))}</b></span>
+                <span><small>موجودی</small><b>{new Intl.NumberFormat('fa-IR').format(product.stock)} عدد</b></span>
+                <span className={product.is_active === false ? 'inactive' : 'active'}>{product.is_active === false ? 'غیرفعال' : 'فعال'}</span>
             </div>
-            <div className="admin-two">
-                <input value={form.data.stock} onChange={(event) => form.setData('stock', event.target.value)} inputMode="numeric" placeholder="موجودی" />
-                <label className="admin-check"><input type="checkbox" checked={form.data.is_active} onChange={(event) => form.setData('is_active', event.target.checked)} /> نمایش در فروشگاه</label>
+            <strong className="manage-open">مشاهده و ویرایش ←</strong>
+        </Link>
+    );
+}
+
+function AdminProductEditor({ product, categories, brands }: { product: Product; categories: Category[]; brands: Brand[] }) {
+    const currentImages = product.images || [];
+    const initialMainImage = currentImages.find((image) => image.path === product.main_image) || currentImages[0];
+    const [previews, setPreviews] = useState<string[]>([]);
+    const form = useForm<ProductEditForm>({
+        _method: 'patch',
+        name: product.name || '',
+        sku: product.sku || '',
+        category_id: product.category?.id ? String(product.category.id) : '',
+        brand_id: product.brand?.id ? String(product.brand.id) : '',
+        price: String(product.price ?? ''),
+        sale_price: product.sale_price ? String(product.sale_price) : '',
+        stock: String(product.stock ?? 0),
+        short_description: product.short_description || '',
+        description: product.description || '',
+        meta_title: product.meta_title || '',
+        meta_description: product.meta_description || '',
+        meta_keywords: product.meta_keywords || '',
+        weight: product.weight ? String(product.weight) : '',
+        dimensions: product.dimensions || '',
+        is_active: product.is_active !== false,
+        images: [],
+        remove_image_ids: [],
+        main_image_choice: initialMainImage?.id ? `existing:${initialMainImage.id}` : '',
+    });
+
+    useEffect(() => () => previews.forEach((preview) => URL.revokeObjectURL(preview)), [previews]);
+
+    const removed = new Set(form.data.remove_image_ids);
+    const visibleCurrentImages = currentImages.filter((image) => image.id && !removed.has(image.id));
+    const legacyImages = Array.from(new Set([
+        product.main_image,
+        ...(product.gallery || []),
+    ].map(imageUrl).filter((path): path is string => Boolean(path))))
+        .filter((path) => !currentImages.some((image) => imageUrl(image.path) === path));
+
+    const toggleRemoveImage = (image: UploadedImage) => {
+        if (!image.id) return;
+        const next = removed.has(image.id)
+            ? form.data.remove_image_ids.filter((id) => id !== image.id)
+            : [...form.data.remove_image_ids, image.id];
+        form.setData('remove_image_ids', next);
+        if (!removed.has(image.id) && form.data.main_image_choice === `existing:${image.id}`) {
+            const fallback = currentImages.find((item) => item.id && item.id !== image.id && !next.includes(item.id));
+            form.setData('main_image_choice', fallback?.id ? `existing:${fallback.id}` : previews.length ? 'new:0' : '');
+        }
+    };
+
+    const submit = (event: FormEvent) => {
+        event.preventDefault();
+        form.post(route('admin.products.update', product.id), {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                previews.forEach((preview) => URL.revokeObjectURL(preview));
+                setPreviews([]);
+                form.setData('images', []);
+                form.setData('remove_image_ids', []);
+            },
+        });
+    };
+
+    return (
+        <main className="page admin admin-product-editor">
+            <div className="admin-page-heading">
+                <div>
+                    <small>مدیریت محصولات</small>
+                    <h1>ویرایش {product.name}</h1>
+                    <p>اطلاعات، قیمت، موجودی و تصاویر محصول را از این صفحه مدیریت کنید.</p>
+                </div>
+                <Link className="secondary-link" href={route('admin')}>بازگشت به پنل مدیریت</Link>
             </div>
-            {Object.keys(form.errors).length > 0 && <small className="form-error">مقادیر محصول را بررسی کنید.</small>}
-            <div className="manage-actions">
-                <button className="primary" disabled={form.processing}>ذخیره تغییرات</button>
-                <button type="button" className="danger-button" onClick={() => { if (window.confirm(`محصول «${product.name}» حذف شود؟`)) router.delete(route('admin.products.destroy', product.id), { preserveScroll: true }); }}>حذف محصول</button>
-            </div>
-        </form>
+            <form onSubmit={submit}>
+                {Object.keys(form.errors).length > 0 && <div className="form-error-box">لطفاً فیلدهای مشخص‌شده را بررسی کنید.</div>}
+                <section className="product-editor-card">
+                    <h2>اطلاعات اصلی</h2>
+                    <div className="product-editor-fields">
+                        <label><span>نام محصول *</span><input required value={form.data.name} onChange={(event) => form.setData('name', event.target.value)} /></label>
+                        <label><span>شناسه محصول / SKU *</span><input required dir="ltr" value={form.data.sku} onChange={(event) => form.setData('sku', event.target.value)} /></label>
+                        <label><span>دسته‌بندی *</span><select required value={form.data.category_id} onChange={(event) => form.setData('category_id', event.target.value)}><option value="">انتخاب دسته‌بندی</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
+                        <label><span>برند</span><select value={form.data.brand_id} onChange={(event) => form.setData('brand_id', event.target.value)}><option value="">بدون برند</option>{brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label>
+                        <label><span>قیمت اصلی *</span><input required inputMode="numeric" value={form.data.price} onChange={(event) => form.setData('price', event.target.value)} /></label>
+                        <label><span>قیمت تخفیفی</span><input inputMode="numeric" value={form.data.sale_price} onChange={(event) => form.setData('sale_price', event.target.value)} /></label>
+                        <label><span>موجودی *</span><input required inputMode="numeric" value={form.data.stock} onChange={(event) => form.setData('stock', event.target.value)} /></label>
+                        <label><span>وزن</span><input inputMode="decimal" value={form.data.weight} onChange={(event) => form.setData('weight', event.target.value)} placeholder="مثلاً ۲۵۰" /></label>
+                        <label><span>ابعاد</span><input value={form.data.dimensions} onChange={(event) => form.setData('dimensions', event.target.value)} placeholder="مثلاً ۱۰ × ۵ × ۳ سانتی‌متر" /></label>
+                        <label className="admin-check editor-active"><input type="checkbox" checked={form.data.is_active} onChange={(event) => form.setData('is_active', event.target.checked)} /> نمایش محصول در فروشگاه</label>
+                        <label className="wide"><span>توضیح کوتاه</span><textarea value={form.data.short_description} onChange={(event) => form.setData('short_description', event.target.value)} /></label>
+                        <label className="wide"><span>توضیحات کامل</span><textarea value={form.data.description} onChange={(event) => form.setData('description', event.target.value)} /></label>
+                    </div>
+                </section>
+
+                <section className="product-editor-card">
+                    <h2>تصاویر محصول</h2>
+                    <p className="panel-help">عکس اصلی را انتخاب کنید. می‌توانید تصاویر قبلی را حذف یا حداکثر ۸ تصویر جدید اضافه کنید.</p>
+                    {(currentImages.length > 0 || legacyImages.length > 0) && <div className="editor-image-grid">
+                        {currentImages.map((image) => (
+                            <div className={removed.has(image.id || 0) ? 'removed' : ''} key={image.id || image.path}>
+                                <img src={imageUrl(image.path)} alt={product.name} />
+                                <label><input type="radio" name="editor-main-image" disabled={removed.has(image.id || 0)} checked={form.data.main_image_choice === `existing:${image.id}`} onChange={() => form.setData('main_image_choice', `existing:${image.id}`)} /> عکس اصلی</label>
+                                <button type="button" onClick={() => toggleRemoveImage(image)}>{removed.has(image.id || 0) ? 'بازگردانی' : 'حذف عکس'}</button>
+                            </div>
+                        ))}
+                        {legacyImages.map((path) => <div key={path}><img src={path} alt={product.name} /><small>تصویر قدیمی محصول</small></div>)}
+                    </div>}
+                    <label className="upload-box">
+                        <span>افزودن تصاویر جدید</span>
+                        <small>فرمت JPG، PNG یا WebP و حداکثر حجم هر فایل ۴ مگابایت</small>
+                        <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={(event) => {
+                            previews.forEach((preview) => URL.revokeObjectURL(preview));
+                            const files = Array.from(event.target.files || []);
+                            const nextPreviews = files.map((file) => URL.createObjectURL(file));
+                            form.setData('images', files);
+                            setPreviews(nextPreviews);
+                            if (!form.data.main_image_choice && files.length) form.setData('main_image_choice', 'new:0');
+                        }} />
+                    </label>
+                    {previews.length > 0 && <div className="editor-image-grid new-images">{previews.map((preview, index) => (
+                        <div key={preview}>
+                            <img src={preview} alt={`تصویر جدید ${index + 1}`} />
+                            <label><input type="radio" name="editor-main-image" checked={form.data.main_image_choice === `new:${index}`} onChange={() => form.setData('main_image_choice', `new:${index}`)} /> عکس اصلی</label>
+                        </div>
+                    ))}</div>}
+                </section>
+
+                <section className="product-editor-card">
+                    <h2>تنظیمات سئو</h2>
+                    <div className="product-editor-fields">
+                        <label><span>عنوان سئو</span><input value={form.data.meta_title} onChange={(event) => form.setData('meta_title', event.target.value)} /></label>
+                        <label><span>کلمات کلیدی</span><input value={form.data.meta_keywords} onChange={(event) => form.setData('meta_keywords', event.target.value)} /></label>
+                        <label className="wide"><span>توضیحات متا</span><textarea value={form.data.meta_description} onChange={(event) => form.setData('meta_description', event.target.value)} /></label>
+                    </div>
+                </section>
+
+                <div className="product-editor-actions">
+                    <button className="primary" disabled={form.processing}>{form.processing ? 'در حال ذخیره...' : 'ذخیره تمام تغییرات'}</button>
+                    <button type="button" className="danger-button" onClick={() => { if (window.confirm(`محصول «${product.name}» حذف شود؟`)) router.delete(route('admin.products.destroy', product.id)); }}>حذف محصول</button>
+                </div>
+            </form>
+        </main>
     );
 }
 

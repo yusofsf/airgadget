@@ -11,20 +11,94 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class ProductController extends Controller
 {
+    public function show(Product $product): Response
+    {
+        return Inertia::render('Storefront', [
+            'view' => 'admin-product',
+            'adminProduct' => $product->load([
+                'brand',
+                'category',
+                'images' => fn ($query) => $query->orderBy('sort_order'),
+            ]),
+            'categories' => Category::orderBy('name')->get(['id', 'name']),
+            'brands' => Brand::orderBy('name')->get(['id', 'name']),
+        ]);
+    }
+
     public function update(Request $request, Product $product): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'sku' => ['required', 'string', 'max:255', Rule::unique('products', 'sku')->ignore($product->id)],
+            'category_id' => ['required', 'integer', 'exists:categories,id'],
+            'brand_id' => ['nullable', 'integer', 'exists:brands,id'],
             'price' => ['required', 'numeric', 'min:0'],
             'sale_price' => ['nullable', 'numeric', 'min:0'],
             'stock' => ['required', 'integer', 'min:0'],
+            'short_description' => ['nullable', 'string', 'max:1000'],
+            'description' => ['nullable', 'string'],
+            'meta_title' => ['nullable', 'string', 'max:255'],
+            'meta_description' => ['nullable', 'string', 'max:500'],
+            'meta_keywords' => ['nullable', 'string', 'max:500'],
+            'weight' => ['nullable', 'numeric', 'min:0'],
+            'dimensions' => ['nullable', 'string', 'max:255'],
             'is_active' => ['required', 'boolean'],
+            'images' => ['nullable', 'array', 'max:8'],
+            'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            'remove_image_ids' => ['nullable', 'array'],
+            'remove_image_ids.*' => ['integer'],
+            'main_image_choice' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $product->update($validated);
+        DB::transaction(function () use ($request, $validated, $product) {
+            $product->update(collect($validated)->only([
+                'name', 'sku', 'category_id', 'brand_id', 'price', 'sale_price', 'stock',
+                'short_description', 'description', 'meta_title', 'meta_description',
+                'meta_keywords', 'weight', 'dimensions', 'is_active',
+            ])->all());
+
+            $removedImages = $product->images()
+                ->whereIn('id', $validated['remove_image_ids'] ?? [])
+                ->get();
+            $product->images()->whereKey($removedImages->pluck('id'))->delete();
+            Storage::disk('public')->delete(
+                $removedImages->pluck('path')->map(fn ($path) => Str::after($path, '/storage/'))->all()
+            );
+
+            $newImages = [];
+            $nextSortOrder = (int) $product->images()->max('sort_order') + 1;
+            foreach ($request->file('images', []) as $index => $image) {
+                $path = '/storage/'.$image->store('products', 'public');
+                $newImages[$index] = $product->images()->create([
+                    'path' => $path,
+                    'sort_order' => $nextSortOrder + $index,
+                ]);
+            }
+
+            $images = $product->images()->orderBy('sort_order')->get();
+            $choice = $validated['main_image_choice'] ?? null;
+            $mainImage = null;
+            if ($choice && Str::startsWith($choice, 'existing:')) {
+                $mainImage = $images->firstWhere('id', (int) Str::after($choice, 'existing:'))?->path;
+            } elseif ($choice && Str::startsWith($choice, 'new:')) {
+                $mainImage = ($newImages[(int) Str::after($choice, 'new:')] ?? null)?->path;
+            }
+
+            if (! $mainImage && $images->contains('path', $product->main_image)) {
+                $mainImage = $product->main_image;
+            }
+
+            $product->update([
+                'main_image' => $mainImage ?: $images->first()?->path,
+                'gallery' => $images->pluck('path')->values()->all(),
+            ]);
+        });
 
         return back()->with('status', "محصول «{$product->name}» ویرایش شد.");
     }

@@ -1,8 +1,12 @@
 <?php
 
 use App\Models\Article;
+use App\Models\Category;
 use App\Models\Order;
+use App\Models\Product;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('admin can browse order summaries and open complete order details', function () {
@@ -88,4 +92,50 @@ test('a product cannot be created without its main price', function () {
         ->assertSessionHasErrors('price');
 
     $this->assertDatabaseMissing('products', ['name' => 'محصول بدون قیمت']);
+});
+
+test('admin can open the complete product editor and upload a visible main image', function () {
+    Storage::fake('public');
+    $admin = User::factory()->create(['is_admin' => true]);
+    $category = Category::create(['name' => 'لوازم جانبی', 'slug' => 'accessories']);
+    $product = Product::create([
+        'category_id' => $category->id,
+        'name' => 'محصول قابل ویرایش',
+        'slug' => 'editable-product',
+        'sku' => 'EDIT-100',
+        'price' => 500000,
+        'stock' => 3,
+        'is_active' => true,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.products.show', $product))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('Storefront')
+            ->where('view', 'admin-product')
+            ->where('adminProduct.name', 'محصول قابل ویرایش')
+            ->has('categories', 1)
+        );
+
+    $this->actingAs($admin)
+        ->post(route('admin.products.update', $product), [
+            '_method' => 'patch',
+            'name' => 'محصول ویرایش‌شده',
+            'sku' => 'EDIT-100',
+            'category_id' => $category->id,
+            'price' => 650000,
+            'stock' => 5,
+            'is_active' => true,
+            'main_image_choice' => 'new:0',
+            'images' => [UploadedFile::fake()->image('product.jpg', 600, 600)],
+        ])
+        ->assertSessionHasNoErrors();
+
+    $product->refresh();
+    expect($product->name)->toBe('محصول ویرایش‌شده')
+        ->and($product->main_image)->toStartWith('/storage/products/')
+        ->and($product->images)->toHaveCount(1);
+
+    Storage::disk('public')->assertExists(str_replace('/storage/', '', $product->main_image));
 });
