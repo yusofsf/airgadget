@@ -134,8 +134,12 @@ test('admin can open the complete product editor and upload a visible main image
 
     $product->refresh();
     expect($product->name)->toBe('محصول ویرایش‌شده')
-        ->and($product->main_image)->toStartWith('/storage/products/')
+        ->and($product->main_image)->toStartWith('/product-images/')
         ->and($product->images)->toHaveCount(1);
 
-    Storage::disk('public')->assertExists(str_replace('/storage/', '', $product->main_image));
+    $storedPath = 'products/'.basename($product->main_image);
+    Storage::disk('public')->assertExists($storedPath);
+    $this->get($product->main_image)
+        ->assertOk()
+        ->assertHeader('cache-control', 'immutable, max-age=31536000, public');
 });

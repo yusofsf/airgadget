@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/',[StoreController::class,'home'])->name('home');
 Route::get('/shop',[StoreController::class,'shop'])->name('shop');
 Route::get('/products/{product:slug}',[StoreController::class,'product'])->name('products.show');
+Route::get('/product-images/{filename}',[ProductController::class,'image'])->where('filename','[A-Za-z0-9._-]+')->name('product-images.show');
 Route::get('/articles',[StoreController::class,'articles'])->name('articles.index');
 Route::get('/articles/{article:slug}',[StoreController::class,'article'])->name('articles.show');
 Route::get('/about-us',[StoreController::class,'page'])->defaults('page','about')->name('about');

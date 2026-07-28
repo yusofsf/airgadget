@@ -14,9 +14,22 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ProductController extends Controller
 {
+    public function image(string $filename): BinaryFileResponse
+    {
+        abort_unless((bool) preg_match('/\A[a-zA-Z0-9._-]+\z/', $filename), 404);
+        $path = "products/{$filename}";
+        abort_unless(Storage::disk('public')->exists($path), 404);
+
+        return response()->file(
+            Storage::disk('public')->path($path),
+            ['Cache-Control' => 'public, max-age=31536000, immutable']
+        );
+    }
+
     public function show(Product $product): Response
     {
         return Inertia::render('Storefront', [
@@ -68,13 +81,14 @@ class ProductController extends Controller
                 ->get();
             $product->images()->whereKey($removedImages->pluck('id'))->delete();
             Storage::disk('public')->delete(
-                $removedImages->pluck('path')->map(fn ($path) => Str::after($path, '/storage/'))->all()
+                $removedImages->pluck('path')->map(fn ($path) => $this->storedImagePath($path))->filter()->all()
             );
 
             $newImages = [];
             $nextSortOrder = (int) $product->images()->max('sort_order') + 1;
             foreach ($request->file('images', []) as $index => $image) {
-                $path = '/storage/'.$image->store('products', 'public');
+                $storedPath = $image->store('products', 'public');
+                $path = '/product-images/'.basename($storedPath);
                 $newImages[$index] = $product->images()->create([
                     'path' => $path,
                     'sort_order' => $nextSortOrder + $index,
@@ -109,7 +123,8 @@ class ProductController extends Controller
         $paths = $product->images()->pluck('path')
             ->push($product->main_image)
             ->filter()
-            ->map(fn ($path) => Str::after($path, '/storage/'))
+            ->map(fn ($path) => $this->storedImagePath($path))
+            ->filter()
             ->unique()
             ->all();
         $product->delete();
@@ -164,7 +179,8 @@ class ProductController extends Controller
 
             $paths = [];
             foreach ($request->file('images', []) as $index => $image) {
-                $path = '/storage/'.$image->store('products', 'public');
+                $storedPath = $image->store('products', 'public');
+                $path = '/product-images/'.basename($storedPath);
                 $paths[$index] = $path;
 
                 $product->images()->create([
@@ -247,5 +263,18 @@ class ProductController extends Controller
         }
 
         return $sku;
+    }
+
+    private function storedImagePath(string $url): ?string
+    {
+        if (Str::contains($url, '/product-images/')) {
+            return 'products/'.basename($url);
+        }
+
+        if (Str::contains($url, '/storage/products/')) {
+            return 'products/'.Str::after($url, '/storage/products/');
+        }
+
+        return null;
     }
 }
