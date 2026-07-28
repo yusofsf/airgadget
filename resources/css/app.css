@@ -36,3 +36,15 @@ html{scroll-behavior:smooth}button,input,textarea{font:inherit}button:focus-visi
 @media(max-width:750px){.account-entry{font-size:10px;padding:0 10px}.auth-two{grid-template-columns:1fr}.profile-form .admin-two{grid-template-columns:1fr}}
 .auth-register-link{width:100%;margin-top:12px}
 .basket svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.basket svg circle{fill:currentColor;stroke:none}
+
+/* Homepage artwork */
+.hero-art .orb{overflow:hidden;box-shadow:inset 0 0 0 1px #ffffff80}
+.hero-art img{width:310px;height:310px;object-fit:cover;mix-blend-mode:normal}
+.hero-photo-credit{position:absolute;bottom:-1px;left:50%;z-index:3;transform:translateX(-50%);direction:ltr;white-space:nowrap;color:#7d7469;font:9px Arial,sans-serif}
+.hero-photo-credit a{color:inherit}
+.float-sale{display:flex;align-items:center;justify-content:center;min-height:54px;padding:12px 18px;font-size:16px;white-space:nowrap}
+.promo{display:flex;align-items:center}
+.promo>div{position:relative;z-index:2}
+.promo>span{left:7%;bottom:25px;font-size:82px;line-height:.72}
+@media(max-width:750px){.hero-art img{width:220px;height:220px}.hero-photo-credit{bottom:-2px}.promo>span{bottom:30px;font-size:58px}}
+@media(max-width:520px){.hero-art img{width:205px;height:205px}.hero-photo-credit{font-size:8px}.promo>span{bottom:31px;font-size:52px}}

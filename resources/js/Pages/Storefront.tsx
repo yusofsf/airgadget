@@ -140,7 +140,7 @@ export default function Storefront({
     const [menuOpen, setMenuOpen] = useState(false);
     const productItems: Product[] = Array.isArray(products) ? products : products?.data || [];
     const list = productItems.map(toCard);
-    const heroImage = list.find((product) => product.image)?.image;
+    const heroImage = '/images/airpods-pro.jpg';
     const pageSeo = resolveSeo(view, product, article);
     const displayed = useMemo(
         () =>
@@ -249,12 +249,14 @@ export default function Storefront({
                             </div>
                             <div className="hero-art">
                                 <div className="orb" />
-                                {heroImage && <img src={heroImage} alt="لوازم جانبی موبایل ایرگجت" />}
-                                <span className="float-card">✓ تضمین اصالت کالا</span>
-                                <span className="float-sale">
-                                    خرید
-                                    <small>حضوری و آنلاین</small>
+                                <img src={heroImage} alt="ایرپاد پرو سفید" />
+                                <span className="hero-photo-credit">
+                                    عکس: <a href="https://www.arne-mueseler.com" target="_blank" rel="noreferrer">Arne Müseler</a>
+                                    {' / '}
+                                    <a href="https://creativecommons.org/licenses/by-sa/3.0/de/deed.en" target="_blank" rel="noreferrer">CC BY-SA 3.0</a>
                                 </span>
+                                <span className="float-card">✓ تضمین اصالت کالا</span>
+                                <span className="float-sale">خرید آنلاین</span>
                             </div>
                         </main>
                         <section className="benefits">
