@@ -176,6 +176,8 @@ export default function Storefront({
     trackingError,
     paymentResult,
     cardToCard,
+    selectedCategory,
+    selectedTag,
 }: any) {
     const [search, setSearch] = useState('');
     const [initialCart] = useState<StoredCart>(readStoredCart);
@@ -188,7 +190,7 @@ export default function Storefront({
     const productItems: Product[] = Array.isArray(products) ? products : products?.data || [];
     const list = productItems.map(toCard);
     const heroImage = '/images/airpods-pro.jpg';
-    const pageSeo = resolveSeo(view, product, article);
+    const pageSeo = resolveSeo(view, product, article, selectedCategory, selectedTag);
     const displayed = useMemo(
         () =>
             list
@@ -349,7 +351,7 @@ export default function Storefront({
                 )}
 
                 {view === 'articles' ? (
-                    <Articles articles={Array.isArray(articles) ? articles : articles?.data || []} topics={topics} tags={tags} />
+                    <Articles articles={Array.isArray(articles) ? articles : articles?.data || []} topics={topics} tags={tags} selectedTag={selectedTag} />
                 ) : view === 'article' ? (
                     <ArticleDetail article={article} />
                 ) : view === 'product' ? (
@@ -379,7 +381,7 @@ export default function Storefront({
                         <div className="section-title">
                             <div>
                                 <em>{view === 'shop' ? 'کالای مورد علاقه‌تان را پیدا کنید' : 'تازه از راه رسیده'}</em>
-                                <h2>{view === 'shop' ? 'همه محصولات' : 'آخرین محصولات'}</h2>
+                                <h2>{selectedCategory?.name || (view === 'shop' ? 'همه محصولات' : 'آخرین محصولات')}</h2>
                             </div>
                             {view === 'shop' && (
                                 <div className="filters">
@@ -497,7 +499,7 @@ function ProductCard({ p, add, fav, toggle }: any) {
     );
 }
 
-function resolveSeo(view: string, product?: Product, article?: Article): SeoMeta {
+function resolveSeo(view: string, product?: Product, article?: Article, selectedCategory?: Category, selectedTag?: Tag): SeoMeta {
     if (view === 'product' && product) {
         return {
             title: product.meta_title || `${product.name} | ایرگجت`,
@@ -515,6 +517,22 @@ function resolveSeo(view: string, product?: Product, article?: Article): SeoMeta
             keywords: article.meta_keywords || article.tags?.map((tag) => tag.name).join(', ') || undefined,
             image: article.image || undefined,
             canonical: article.canonical_url || undefined,
+        };
+    }
+
+    if (view === 'shop' && selectedCategory) {
+        return {
+            title: `${selectedCategory.name} | فروشگاه ایرگجت`,
+            description: `خرید محصولات دسته ${selectedCategory.name} از فروشگاه ایرگجت`,
+            canonical: route('categories.show', selectedCategory.slug),
+        };
+    }
+
+    if (view === 'articles' && selectedTag) {
+        return {
+            title: `مقالات ${selectedTag.name} | مجله ایرگجت`,
+            description: `مطالب و راهنماهای مرتبط با ${selectedTag.name} در مجله ایرگجت`,
+            canonical: route('tags.show', selectedTag.slug),
         };
     }
 
@@ -603,10 +621,11 @@ function CategoryCards({ counts }: { counts: Category[] }) {
             </div>
             <div className="category-grid">
                 {items.map(([icon, title]) => {
-                    const count = countByName.get(title);
+                    const category = (counts || []).find((item) => item.name === title);
+                    const count = category?.products_count;
 
                     return (
-                        <Link href="/shop" key={title}>
+                        <Link href={category?.slug ? route('categories.show', category.slug) : '/shop'} key={title}>
                             <i>{icon}</i>
                             <b>{title}</b>
                             <small>{count ? `${new Intl.NumberFormat('fa-IR').format(count)} محصول ←` : 'مشاهده محصولات ←'}</small>
@@ -618,14 +637,14 @@ function CategoryCards({ counts }: { counts: Category[] }) {
     );
 }
 
-function Articles({ articles, topics, tags }: { articles: Article[]; topics: string[]; tags: Tag[] }) {
+function Articles({ articles, topics, tags, selectedTag }: { articles: Article[]; topics: string[]; tags: Tag[]; selectedTag?: Tag }) {
     return (
         <main className="page">
             <em>راهنما و بررسی تخصصی</em>
-            <h1>مجله ایرگجت</h1>
+            <h1>{selectedTag ? `مقالات ${selectedTag.name}` : 'مجله ایرگجت'}</h1>
             <div className="article-taxonomy">
                 {topics.map((topic) => <span key={topic}>{topic}</span>)}
-                {tags.map((tag) => <small key={tag.id}>#{tag.name}</small>)}
+                {tags.map((tag) => <Link className={selectedTag?.id === tag.id ? 'active' : ''} href={route('tags.show', tag.slug)} key={tag.id}>#{tag.name}</Link>)}
             </div>
             <div className="article-grid">
                 {articles.length ? articles.map((article) => (
