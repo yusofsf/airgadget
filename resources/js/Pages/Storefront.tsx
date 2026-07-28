@@ -1512,24 +1512,20 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
     const submit = (event: FormEvent) => {
         event.preventDefault();
         const files = [...form.data.images];
-        const selectedNewImage = form.data.main_image_choice.startsWith('new:')
-            ? Number(form.data.main_image_choice.replace('new:', ''))
-            : -1;
         setImageUploadError('');
         setImageUploadProgress(0);
         form.transform((values) => ({
             ...values,
-            images: [],
-            main_image_choice: values.main_image_choice.startsWith('new:') ? '' : values.main_image_choice,
+            // ProductController already handles image files in the update
+            // request. Keeping them in this multipart request avoids a second
+            // request that can be lost after the Inertia redirect.
+            images: files,
         }));
         form.post(route('admin.products.update', product.id), {
             forceFormData: true,
             preserveScroll: true,
-            onSuccess: async () => {
+            onSuccess: () => {
                 try {
-                    if (files.length) {
-                        await uploadProductImages(product.id, files, selectedNewImage, setImageUploadProgress);
-                    }
                     previews.forEach((preview) => URL.revokeObjectURL(preview));
                     setPreviews([]);
                     form.setData('images', []);
