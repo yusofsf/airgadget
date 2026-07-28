@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\StoreSetting;
 use App\Models\Tag;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 
@@ -26,20 +27,51 @@ class StoreController extends Controller
         ]);
     }
 
-    public function shop()
+    public function shop(Request $request)
     {
-        return Inertia::render('Storefront', [
-            'view' => 'shop',
-            'products' => Product::with(['brand', 'images', 'tags'])->where('is_active', true)->paginate(12),
-        ]);
+        return $this->shopResponse($request);
     }
 
-    public function category(Category $category)
+    public function category(Request $request, Category $category)
     {
+        return $this->shopResponse($request, $category);
+    }
+
+    private function shopResponse(Request $request, ?Category $selectedCategory = null)
+    {
+        $brandId = $request->integer('brand_id') ?: null;
+        $categoryId = $request->integer('category_id') ?: $selectedCategory?->id;
+        $minPrice = $request->filled('min_price') && is_numeric($request->input('min_price')) ? (float) $request->input('min_price') : null;
+        $maxPrice = $request->filled('max_price') && is_numeric($request->input('max_price')) ? (float) $request->input('max_price') : null;
+        $productsQuery = Product::with(['brand', 'images', 'tags'])->where('is_active', true)
+            ->when($brandId, fn ($query) => $query->where('brand_id', $brandId))
+            ->when($categoryId, fn ($query) => $query->where('category_id', $categoryId))
+            ->when($minPrice !== null || $maxPrice !== null, function ($query) use ($minPrice, $maxPrice) {
+                $query->where(function ($priceQuery) use ($minPrice, $maxPrice) {
+                    $priceQuery->where(function ($saleQuery) use ($minPrice, $maxPrice) {
+                        $saleQuery->whereNotNull('sale_price')
+                            ->when($minPrice !== null, fn ($q) => $q->where('sale_price', '>=', $minPrice))
+                            ->when($maxPrice !== null, fn ($q) => $q->where('sale_price', '<=', $maxPrice));
+                    })->orWhere(function ($regularQuery) use ($minPrice, $maxPrice) {
+                        $regularQuery->whereNull('sale_price')
+                            ->when($minPrice !== null, fn ($q) => $q->where('price', '>=', $minPrice))
+                            ->when($maxPrice !== null, fn ($q) => $q->where('price', '<=', $maxPrice));
+                    });
+                });
+            });
+
         return Inertia::render('Storefront', [
             'view' => 'shop',
-            'products' => Product::with(['brand', 'images', 'tags'])->where('is_active', true)->where('category_id', $category->id)->paginate(12),
-            'selectedCategory' => $category->only(['id', 'name', 'slug']),
+            'products' => $productsQuery->latest()->paginate(12)->withQueryString(),
+            'selectedCategory' => $selectedCategory?->only(['id', 'name', 'slug']),
+            'shopFilters' => [
+                'brand_id' => $brandId ? (string) $brandId : '',
+                'category_id' => $categoryId ? (string) $categoryId : '',
+                'min_price' => $minPrice !== null ? (string) $minPrice : '',
+                'max_price' => $maxPrice !== null ? (string) $maxPrice : '',
+            ],
+            'brandOptions' => Brand::whereHas('products', fn ($query) => $query->where('is_active', true))->orderBy('name')->get(['id', 'name']),
+            'categoryOptions' => Category::whereHas('products', fn ($query) => $query->where('is_active', true))->orderBy('name')->get(['id', 'name', 'slug']),
         ]);
     }
 

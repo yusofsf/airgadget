@@ -7,6 +7,7 @@ type Category = { id: number; name: string; slug?: string; products_count?: numb
 type UploadedImage = { id?: number; path: string; sort_order?: number };
 type Tag = { id: number; name: string; slug: string; products_count?: number; articles_count?: number };
 type ArticleCategory = { id: number; name: string; slug: string; description?: string | null; articles_count?: number };
+type ShopFilters = { brand_id: string; category_id: string; min_price: string; max_price: string };
 type Product = {
     id: number;
     name: string;
@@ -225,6 +226,9 @@ export default function Storefront({
     selectedCategory,
     selectedTag,
     selectedArticleCategory,
+    shopFilters = { brand_id: '', category_id: '', min_price: '', max_price: '' },
+    brandOptions = [],
+    categoryOptions = [],
 }: any) {
     const [search, setSearch] = useState('');
     const [initialCart] = useState<StoredCart>(readStoredCart);
@@ -233,11 +237,15 @@ export default function Storefront({
     const [fav, setFav] = useState<number[]>([]);
     const [panel, setPanel] = useState<'cart' | 'account' | null>(null);
     const [filter, setFilter] = useState('');
+    const [shopFilterForm, setShopFilterForm] = useState<ShopFilters>(shopFilters);
     const [menuOpen, setMenuOpen] = useState(false);
     const productItems: Product[] = Array.isArray(products) ? products : products?.data || [];
     const list = productItems.map(toCard);
     const heroImage = '/images/airpods-pro.jpg';
     const pageSeo = resolveSeo(view, product, article, selectedCategory, selectedTag, selectedArticleCategory);
+    useEffect(() => {
+        if (view === 'shop') setShopFilterForm(shopFilters);
+    }, [view, shopFilters?.brand_id, shopFilters?.category_id, shopFilters?.min_price, shopFilters?.max_price]);
     const displayed = useMemo(
         () =>
             list
@@ -272,6 +280,15 @@ export default function Storefront({
     };
     const holdCartForPayment = () => setCartExpiresAt(Date.now() + 10 * 60 * 1000);
     const releaseCartHold = () => setCartExpiresAt(null);
+    const applyShopFilters = (event: FormEvent) => {
+        event.preventDefault();
+        const params = Object.fromEntries(Object.entries(shopFilterForm).filter(([, value]) => value !== ''));
+        router.get(route('shop'), params, { preserveState: true, preserveScroll: true });
+    };
+    const clearShopFilters = () => {
+        setShopFilterForm({ brand_id: '', category_id: '', min_price: '', max_price: '' });
+        router.get(route('shop'), {}, { preserveState: true, preserveScroll: true });
+    };
     const section =
         view === 'shop'
             ? 'فروشگاه'
@@ -447,6 +464,14 @@ export default function Storefront({
                             )}
                             {view !== 'shop' && <Link href="/shop">مشاهده همه ←</Link>}
                         </div>
+                        {view === 'shop' && <form className="shop-filters" onSubmit={applyShopFilters}>
+                            <label><span>برند</span><select value={shopFilterForm.brand_id} onChange={(event) => setShopFilterForm({ ...shopFilterForm, brand_id: event.target.value })}><option value="">همه برندها</option>{brandOptions.map((brand: Brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label>
+                            <label><span>دسته‌بندی</span><select value={shopFilterForm.category_id} onChange={(event) => setShopFilterForm({ ...shopFilterForm, category_id: event.target.value })}><option value="">همه دسته‌ها</option>{categoryOptions.map((category: Category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
+                            <label><span>حداقل قیمت</span><input value={shopFilterForm.min_price} onChange={(event) => setShopFilterForm({ ...shopFilterForm, min_price: event.target.value })} inputMode="numeric" placeholder="تومان" /></label>
+                            <label><span>حداکثر قیمت</span><input value={shopFilterForm.max_price} onChange={(event) => setShopFilterForm({ ...shopFilterForm, max_price: event.target.value })} inputMode="numeric" placeholder="تومان" /></label>
+                            <button className="primary" type="submit">اعمال فیلتر</button>
+                            {(shopFilterForm.brand_id || shopFilterForm.category_id || shopFilterForm.min_price || shopFilterForm.max_price) && <button className="secondary" type="button" onClick={clearShopFilters}>حذف فیلترها</button>}
+                        </form>}
                         {displayed.length ? (
                             <div className="product-grid">
                                 {displayed.map((p) => (
