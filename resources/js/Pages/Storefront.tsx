@@ -1271,7 +1271,10 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                 <Link className="secondary-link" href={route('admin')}>بازگشت به پنل مدیریت</Link>
             </div>
             <form onSubmit={submit}>
-                {Object.keys(form.errors).length > 0 && <div className="form-error-box">لطفاً فیلدهای مشخص‌شده را بررسی کنید.</div>}
+                {Object.keys(form.errors).length > 0 && <div className="form-error-box">
+                    <b>ذخیره محصول انجام نشد:</b>
+                    {Object.entries(form.errors).map(([field, message]) => <span key={field}>{String(message)}</span>)}
+                </div>}
                 <section className="product-editor-card">
                     <h2>اطلاعات اصلی</h2>
                     <div className="product-editor-fields">
@@ -1305,16 +1308,30 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                     </div>}
                     <label className="upload-box">
                         <span>افزودن تصاویر جدید</span>
-                        <small>فرمت JPG، PNG یا WebP و حداکثر حجم هر فایل ۴ مگابایت</small>
+                        <small>فرمت JPG، PNG یا WebP و حداکثر حجم هر فایل ۱۰ مگابایت</small>
                         <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={(event) => {
                             previews.forEach((preview) => URL.revokeObjectURL(preview));
                             const files = Array.from(event.target.files || []);
+                            form.clearErrors('images');
+                            if (files.some((file) => file.size > 10 * 1024 * 1024)) {
+                                form.setError('images', 'حجم هر تصویر باید کمتر از ۱۰ مگابایت باشد.');
+                                event.target.value = '';
+                                form.setData('images', []);
+                                setPreviews([]);
+                                return;
+                            }
                             const nextPreviews = files.map((file) => URL.createObjectURL(file));
                             form.setData('images', files);
                             setPreviews(nextPreviews);
                             if (!form.data.main_image_choice && files.length) form.setData('main_image_choice', 'new:0');
                         }} />
                     </label>
+                    {form.errors.images && <small className="form-error upload-error">{form.errors.images}</small>}
+                    {form.data.images.length > 0 && <div className="selected-upload-summary">
+                        <span>{new Intl.NumberFormat('fa-IR').format(form.data.images.length)} تصویر آماده آپلود است.</span>
+                        <b>{form.data.images.map((file) => file.name).join('، ')}</b>
+                    </div>}
+                    {form.progress && <div className="upload-progress"><span style={{ width: `${form.progress.percentage || 0}%` }} /><b>{new Intl.NumberFormat('fa-IR').format(form.progress.percentage || 0)}٪ آپلود شد</b></div>}
                     {previews.length > 0 && <div className="editor-image-grid new-images">{previews.map((preview, index) => (
                         <div key={preview}>
                             <img src={preview} alt={`تصویر جدید ${index + 1}`} />

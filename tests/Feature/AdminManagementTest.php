@@ -64,6 +64,12 @@ test('non admins cannot access order management', function () {
     $this->actingAs($user)->get(route('admin.orders.index'))->assertForbidden();
 });
 
+test('storefront is declared as Persian and right to left', function () {
+    $this->get(route('home'))
+        ->assertOk()
+        ->assertSee('<html lang="fa" dir="rtl">', false);
+});
+
 test('article can be created without a topic or meta keywords', function () {
     $admin = User::factory()->create(['is_admin' => true]);
 

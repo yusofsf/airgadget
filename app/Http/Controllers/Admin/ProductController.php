@@ -8,10 +8,12 @@ use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -63,7 +65,7 @@ class ProductController extends Controller
             'dimensions' => ['nullable', 'string', 'max:255'],
             'is_active' => ['required', 'boolean'],
             'images' => ['nullable', 'array', 'max:8'],
-            'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'remove_image_ids' => ['nullable', 'array'],
             'remove_image_ids.*' => ['integer'],
             'main_image_choice' => ['nullable', 'string', 'max:100'],
@@ -87,8 +89,7 @@ class ProductController extends Controller
             $newImages = [];
             $nextSortOrder = (int) $product->images()->max('sort_order') + 1;
             foreach ($request->file('images', []) as $index => $image) {
-                $storedPath = $image->store('products', 'public');
-                $path = '/product-images/'.basename($storedPath);
+                $path = $this->storeProductImage($image);
                 $newImages[$index] = $product->images()->create([
                     'path' => $path,
                     'sort_order' => $nextSortOrder + $index,
@@ -152,7 +153,7 @@ class ProductController extends Controller
             'meta_keywords' => ['nullable', 'string', 'max:500'],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
             'images' => ['nullable', 'array', 'max:8'],
-            'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
 
         $product = DB::transaction(function () use ($request, $validated) {
@@ -179,8 +180,7 @@ class ProductController extends Controller
 
             $paths = [];
             foreach ($request->file('images', []) as $index => $image) {
-                $storedPath = $image->store('products', 'public');
-                $path = '/product-images/'.basename($storedPath);
+                $path = $this->storeProductImage($image);
                 $paths[$index] = $path;
 
                 $product->images()->create([
@@ -276,5 +276,24 @@ class ProductController extends Controller
         }
 
         return null;
+    }
+
+    private function storeProductImage(UploadedFile $image): string
+    {
+        $disk = Storage::disk('public');
+        if (! $disk->exists('products') && ! $disk->makeDirectory('products')) {
+            throw ValidationException::withMessages([
+                'images' => 'پوشه تصاویر محصول روی سرور قابل نوشتن نیست.',
+            ]);
+        }
+
+        $storedPath = $image->store('products', 'public');
+        if (! is_string($storedPath) || $storedPath === '') {
+            throw ValidationException::withMessages([
+                'images' => 'ذخیره تصویر روی سرور انجام نشد؛ دسترسی پوشه storage را بررسی کنید.',
+            ]);
+        }
+
+        return '/product-images/'.basename($storedPath);
     }
 }
