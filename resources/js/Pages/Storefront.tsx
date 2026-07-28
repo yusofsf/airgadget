@@ -1456,6 +1456,7 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
     const [imageUploadProgress, setImageUploadProgress] = useState(0);
     const [imageUploadError, setImageUploadError] = useState('');
     const [preparingImages, setPreparingImages] = useState(false);
+    const [savingProduct, setSavingProduct] = useState(false);
     const form = useForm<ProductEditForm>({
         _method: 'patch',
         name: product.name || '',
@@ -1509,34 +1510,58 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
         }
     };
 
-    const submit = (event: FormEvent) => {
+    const submit = async (event: FormEvent) => {
         event.preventDefault();
-        const files = [...form.data.images];
+        const payload = new FormData();
+
+        Object.entries(form.data).forEach(([key, value]) => {
+            if (key === 'images') {
+                (value as File[]).forEach((file) => payload.append('images[]', file, file.name));
+                return;
+            }
+
+            if (Array.isArray(value)) {
+                value.forEach((item) => payload.append(`${key}[]`, String(item)));
+                return;
+            }
+
+            payload.append(key, typeof value === 'boolean' ? (value ? '1' : '0') : String(value ?? ''));
+        });
+
         setImageUploadError('');
         setImageUploadProgress(0);
-        form.transform((values) => ({
-            ...values,
-            // ProductController already handles image files in the update
-            // request. Keeping them in this multipart request avoids a second
-            // request that can be lost after the Inertia redirect.
-            images: files,
-        }));
-        form.post(route('admin.products.update', product.id), {
-            forceFormData: true,
-            preserveScroll: true,
-            onSuccess: () => {
-                try {
-                    previews.forEach((preview) => URL.revokeObjectURL(preview));
-                    setPreviews([]);
-                    form.setData('images', []);
-                    form.setData('remove_image_ids', []);
-                    form.setData('remove_legacy_paths', []);
-                    router.reload();
-                } catch (error) {
-                    setImageUploadError(uploadErrorMessage(error));
-                }
-            },
-        });
+        setSavingProduct(true);
+        form.clearErrors();
+
+        try {
+            await axios.post(route('admin.products.update', product.id), payload, {
+                headers: { Accept: 'application/json' },
+                onUploadProgress: (progressEvent) => {
+                    if (progressEvent.total) {
+                        setImageUploadProgress(Math.round((progressEvent.loaded / progressEvent.total) * 100));
+                    }
+                },
+            });
+            previews.forEach((preview) => URL.revokeObjectURL(preview));
+            setPreviews([]);
+            form.setData('images', []);
+            form.setData('remove_image_ids', []);
+            form.setData('remove_legacy_paths', []);
+            router.reload();
+        } catch (error: any) {
+            const validationErrors = error?.response?.data?.errors;
+            if (validationErrors) {
+                Object.entries(validationErrors).forEach(([key, messages]) => {
+                    form.setError(
+                        key as keyof ProductEditForm,
+                        Array.isArray(messages) ? String(messages[0]) : String(messages),
+                    );
+                });
+            }
+            setImageUploadError(uploadErrorMessage(error));
+        } finally {
+            setSavingProduct(false);
+        }
     };
 
     return (
@@ -1645,7 +1670,7 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                 </section>
 
                 <div className="product-editor-actions">
-                    <button className="primary" disabled={form.processing || preparingImages}>{form.processing || imageUploadProgress > 0 && imageUploadProgress < 100 ? 'در حال ذخیره و آپلود...' : 'ذخیره تمام تغییرات'}</button>
+                    <button className="primary" disabled={savingProduct || preparingImages}>{savingProduct ? 'در حال ذخیره و آپلود...' : 'ذخیره تمام تغییرات'}</button>
                     <button type="button" className="danger-button" onClick={() => { if (window.confirm(`محصول «${product.name}» حذف شود؟`)) router.delete(route('admin.products.destroy', product.id)); }}>حذف محصول</button>
                 </div>
             </form>
