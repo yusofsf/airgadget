@@ -8,7 +8,12 @@ class Order extends Model
 {
     protected $guarded = [];
 
-    protected $casts = ['address' => 'array'];
+    protected $casts = [
+        'address' => 'array',
+        'paid_at' => 'datetime',
+        'inventory_released' => 'boolean',
+        'card_to_card_amount' => 'integer',
+    ];
 
     public function items()
     {

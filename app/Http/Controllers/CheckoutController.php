@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\StoreSetting;
+use App\Services\ZarinpalGateway;
 use App\Support\Phone;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,21 +14,30 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Mpdf\Mpdf;
+use Mpdf\Output\Destination;
+use RuntimeException;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class CheckoutController extends Controller
 {
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, ZarinpalGateway $gateway): SymfonyResponse
     {
         $request->merge([
             'phone' => Phone::normalize($request->input('phone')),
-            'postal_code' => strtr((string) $request->input('postal_code'), ['۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9','٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9']),
+            'postal_code' => $this->englishDigits($request->input('postal_code')),
+            'card_amount' => str_replace([',', '٬', ' '], '', $this->englishDigits($request->input('card_amount'))),
         ]);
+
         $validated = $request->validate([
-            'customer_name' => ['required', 'string', 'max:150'],
+            'first_name' => ['required', 'string', 'max:100'],
+            'last_name' => ['required', 'string', 'max:100'],
             'phone' => ['required', 'regex:/^09\d{9}$/'],
             'postal_code' => ['required', 'regex:/^\d{10}$/'],
             'shipping_method' => ['required', 'in:mashhad_courier,pickup,post'],
             'payment_method' => ['required', 'in:zarinpal,card_to_card'],
+            'card_amount' => ['required_if:payment_method,card_to_card', 'nullable', 'integer', 'min:1'],
+            'receipt' => ['required_if:payment_method,card_to_card', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'address' => ['required', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
@@ -40,9 +50,16 @@ class CheckoutController extends Controller
         if (! $shipping) {
             throw ValidationException::withMessages(['shipping_method' => 'روش ارسال انتخاب‌شده فعال نیست.']);
         }
+
         $order = DB::transaction(function () use ($request, $validated, $shipping) {
-            $requestedItems = collect($validated['items'])->groupBy('product_id')->map(fn ($items) => $items->sum('quantity'));
-            $products = Product::whereIn('id', $requestedItems->keys())->where('is_active', true)->lockForUpdate()->get()->keyBy('id');
+            $requestedItems = collect($validated['items'])
+                ->groupBy('product_id')
+                ->map(fn ($items) => $items->sum('quantity'));
+            $products = Product::whereIn('id', $requestedItems->keys())
+                ->where('is_active', true)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
             $subtotal = 0;
 
             foreach ($requestedItems as $productId => $quantity) {
@@ -54,6 +71,13 @@ class CheckoutController extends Controller
             }
 
             $shippingCost = (int) $shipping['cost'];
+            $total = $subtotal + $shippingCost;
+            if ($validated['payment_method'] === 'card_to_card' && (int) $validated['card_amount'] !== $total) {
+                throw ValidationException::withMessages(['card_amount' => 'مبلغ واریزی باید دقیقاً با جمع کل سفارش برابر باشد.']);
+            }
+            $receiptPath = $request->file('receipt')
+                ? $request->file('receipt')->store('payment-receipts', 'local')
+                : null;
             $order = Order::create([
                 'user_id' => $request->user()?->id,
                 'number' => 'AG-'.now()->format('ymd').'-'.strtoupper(Str::random(6)),
@@ -61,30 +85,169 @@ class CheckoutController extends Controller
                 'status' => $validated['payment_method'] === 'card_to_card' ? 'pending_review' : 'pending_payment',
                 'shipping_method' => $validated['shipping_method'],
                 'payment_method' => $validated['payment_method'],
+                'payment_receipt' => $receiptPath,
+                'card_to_card_amount' => $validated['payment_method'] === 'card_to_card' ? (int) $validated['card_amount'] : null,
                 'subtotal' => $subtotal,
                 'discount' => 0,
                 'shipping_cost' => $shippingCost,
                 'tax' => 0,
-                'total' => $subtotal + $shippingCost,
-                'address' => ['customer_name' => $validated['customer_name'], 'phone' => $validated['phone'], 'postal_code' => $validated['postal_code'], 'full' => $validated['address']],
+                'total' => $total,
+                'address' => [
+                    'first_name' => $validated['first_name'],
+                    'last_name' => $validated['last_name'],
+                    'customer_name' => trim($validated['first_name'].' '.$validated['last_name']),
+                    'phone' => $validated['phone'],
+                    'postal_code' => $validated['postal_code'],
+                    'full' => $validated['address'],
+                ],
             ]);
 
             foreach ($requestedItems as $productId => $quantity) {
                 $product = $products->get($productId);
-                $order->items()->create(['product_id' => $product->id, 'name' => $product->name, 'sku' => $product->sku, 'price' => $product->sale_price ?: $product->price, 'quantity' => $quantity]);
+                $order->items()->create([
+                    'product_id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    'price' => $product->sale_price ?: $product->price,
+                    'quantity' => $quantity,
+                ]);
+                $product->decrement('stock', $quantity);
             }
 
             return $order;
         });
 
-        return redirect()->route('orders.invoice', ['order' => $order, 'token' => $order->invoice_token]);
+        if ($validated['payment_method'] === 'card_to_card') {
+            return redirect()
+                ->route('orders.invoice', ['order' => $order, 'token' => $order->invoice_token])
+                ->with('status', "فیش شما ثبت شد. کد سفارش {$order->number} است و پس از بررسی مدیر تأیید می‌شود.");
+        }
+
+        try {
+            $payment = $gateway->request(
+                (int) $order->total,
+                route('payments.zarinpal.callback', ['order' => $order, 'token' => $order->invoice_token]),
+                "پرداخت سفارش {$order->number} ایرگجت",
+                $validated['phone'],
+            );
+            $order->update(['payment_authority' => $payment['authority']]);
+        } catch (RuntimeException $exception) {
+            $this->failAndRelease($order);
+            throw ValidationException::withMessages(['payment' => $exception->getMessage()]);
+        }
+
+        return Inertia::location($payment['url']);
+    }
+
+    public function callback(Request $request, Order $order, string $token, ZarinpalGateway $gateway): Response|RedirectResponse
+    {
+        $this->authorizeToken($order, $token);
+        $authority = (string) $request->query('Authority');
+
+        if ($order->paid_at) {
+            return redirect()->route('orders.invoice', ['order' => $order, 'token' => $token]);
+        }
+
+        if ($request->query('Status') !== 'OK' || $authority === '' || ! hash_equals((string) $order->payment_authority, $authority)) {
+            $this->failAndRelease($order);
+
+            return Inertia::render('Storefront', [
+                'view' => 'payment-result',
+                'paymentResult' => ['success' => false, 'number' => $order->number, 'message' => 'پرداخت لغو شد یا توسط درگاه تأیید نشد.'],
+            ]);
+        }
+
+        $verification = $gateway->verify($authority, (int) $order->total);
+        if (! $verification['success']) {
+            $this->failAndRelease($order);
+
+            return Inertia::render('Storefront', [
+                'view' => 'payment-result',
+                'paymentResult' => ['success' => false, 'number' => $order->number, 'message' => $verification['message']],
+            ]);
+        }
+
+        DB::transaction(function () use ($order, $verification) {
+            $lockedOrder = Order::lockForUpdate()->findOrFail($order->id);
+            if (! $lockedOrder->paid_at) {
+                $lockedOrder->update([
+                    'status' => 'pending_review',
+                    'payment_reference' => $verification['reference'],
+                    'paid_at' => now(),
+                ]);
+            }
+        });
+
+        return redirect()
+            ->route('orders.invoice', ['order' => $order, 'token' => $token])
+            ->with('status', "پرداخت موفق بود. کد سفارش شما {$order->number} است.");
     }
 
     public function invoice(Order $order, string $token): Response
     {
-        abort_unless($order->invoice_token && hash_equals($order->invoice_token, $token), 404);
-        $method = collect(StoreSetting::shippingMethods())->firstWhere('code', $order->shipping_method);
+        $this->authorizeToken($order, $token);
 
-        return Inertia::render('Storefront', ['view' => 'invoice', 'invoice' => $order->load('items'), 'invoiceShipping' => $method]);
+        return Inertia::render('Storefront', [
+            'view' => 'invoice',
+            'invoice' => $order->load('items'),
+            'invoiceShipping' => collect(StoreSetting::shippingMethods())->firstWhere('code', $order->shipping_method),
+        ]);
+    }
+
+    public function invoicePdf(Order $order, string $token): SymfonyResponse
+    {
+        $this->authorizeToken($order, $token);
+        $order->load('items');
+        $shipping = collect(StoreSetting::shippingMethods())->firstWhere('code', $order->shipping_method);
+        $html = view('pdf.invoice', compact('order', 'shipping'))->render();
+        $pdf = new Mpdf([
+            'mode' => 'utf-8',
+            'format' => 'A4',
+            'tempDir' => storage_path('framework/cache'),
+            'default_font' => 'dejavusans',
+            'directionality' => 'rtl',
+            'margin_top' => 12,
+            'margin_right' => 12,
+            'margin_bottom' => 12,
+            'margin_left' => 12,
+        ]);
+        $pdf->SetDirectionality('rtl');
+        $pdf->WriteHTML($html);
+
+        return response($pdf->Output("invoice-{$order->number}.pdf", Destination::STRING_RETURN), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "inline; filename=\"invoice-{$order->number}.pdf\"",
+        ]);
+    }
+
+    private function failAndRelease(Order $order): void
+    {
+        DB::transaction(function () use ($order) {
+            $lockedOrder = Order::with('items')->lockForUpdate()->findOrFail($order->id);
+            if ($lockedOrder->inventory_released || $lockedOrder->paid_at) {
+                return;
+            }
+            foreach ($lockedOrder->items as $item) {
+                if ($item->product_id) {
+                    Product::whereKey($item->product_id)->increment('stock', $item->quantity);
+                }
+            }
+            $lockedOrder->update(['status' => 'failed', 'inventory_released' => true]);
+        });
+    }
+
+    private function authorizeToken(Order $order, string $token): void
+    {
+        abort_unless($order->invoice_token && hash_equals($order->invoice_token, $token), 404);
+    }
+
+    private function englishDigits(mixed $value): string
+    {
+        return strtr((string) $value, [
+            '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
+            '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+            '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+        ]);
     }
 }

@@ -43,7 +43,7 @@ type Article = {
     tags?: Tag[];
 };
 type ShippingMethod = { code: string; name: string; description: string; cost: number; is_active: boolean };
-type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; total: number; shipping_method: string; payment_method?: string; created_at: string; address?: { customer_name?: string; phone?: string; postal_code?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; price?: number; quantity: number }[]; user?: { first_name?: string; phone_number?: string } };
+type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; total: number; shipping_method: string; payment_method?: string; payment_receipt?: string; card_to_card_amount?: number; payment_reference?: string; paid_at?: string; created_at: string; address?: { first_name?: string; last_name?: string; customer_name?: string; phone?: string; postal_code?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; price?: number; quantity: number }[]; user?: { first_name?: string; phone_number?: string } };
 type Accounting = { received: number; product_revenue: number; shipping_revenue: number; sold_items: number; paid_orders: number; pending_orders: number };
 type CardProduct = {
     id: number;
@@ -54,7 +54,7 @@ type CardProduct = {
     brand: string;
     color: string;
     image?: string;
-    stock: boolean;
+    stock: number;
     tag?: string;
 };
 type SeoMeta = {
@@ -107,7 +107,7 @@ const toCard = (p: Product): CardProduct => ({
     sale: p.sale_price ? Number(p.sale_price) : undefined,
     brand: p.brand?.name || 'بدون برند',
     color: p.attributes?.color || 'مشکی',
-    stock: Number(p.stock || 0) > 0,
+    stock: Number(p.stock || 0),
     image: p.main_image || p.images?.[0]?.path,
 });
 
@@ -128,6 +128,10 @@ export default function Storefront({
     orders = [],
     invoice,
     invoiceShipping,
+    trackedOrder,
+    trackingError,
+    paymentResult,
+    cardToCard,
 }: any) {
     const [search, setSearch] = useState('');
     const [cart, setCart] = useState<CardProduct[]>(() => {
@@ -152,6 +156,9 @@ export default function Storefront({
     useEffect(() => {
         window.localStorage.setItem('airgadget-cart', JSON.stringify(cart));
     }, [cart]);
+    const addToCart = (item: CardProduct) => {
+        setCart((items) => items.filter((cartItem) => cartItem.id === item.id).length < item.stock ? [...items, item] : items);
+    };
     const section =
         view === 'shop'
             ? 'فروشگاه'
@@ -282,15 +289,19 @@ export default function Storefront({
                 ) : view === 'article' ? (
                     <ArticleDetail article={article} />
                 ) : view === 'product' ? (
-                    <ProductDetail product={product} add={(item: CardProduct) => setCart((items) => [...items, item])} />
+                    <ProductDetail product={product} add={addToCart} />
                 ) : view === 'admin' ? (
                     <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} accounting={accounting} orders={orders} shippingMethods={shippingMethods} />
                 ) : view === 'account' ? (
                     <Account orders={orders} auth={auth} />
                 ) : view === 'checkout' ? (
-                    <Checkout cart={cart} shippingMethods={shippingMethods} clearCart={() => setCart([])} auth={auth} />
+                    <Checkout cart={cart} shippingMethods={shippingMethods} clearCart={() => setCart([])} auth={auth} cardToCard={cardToCard} />
                 ) : view === 'invoice' ? (
-                    <Invoice order={invoice} shipping={invoiceShipping} />
+                    <Invoice order={invoice} shipping={invoiceShipping} clearCart={() => setCart([])} />
+                ) : view === 'tracking' ? (
+                    <OrderTracking order={trackedOrder} error={trackingError} />
+                ) : view === 'payment-result' ? (
+                    <PaymentResult result={paymentResult} />
                 ) : view === 'about' || view === 'contact' || view === 'terms' ? (
                     <StaticPage type={view} />
                 ) : (
@@ -321,7 +332,7 @@ export default function Storefront({
                                     <ProductCard
                                         key={p.id}
                                         p={p}
-                                        add={(item: CardProduct) => setCart((items) => [...items, item])}
+                                        add={addToCart}
                                         fav={fav.includes(p.id)}
                                         toggle={() =>
                                             setFav((items) => (items.includes(p.id) ? items.filter((item) => item !== p.id) : [...items, p.id]))
@@ -336,6 +347,10 @@ export default function Storefront({
                             </div>
                         )}
                     </section>
+                )}
+
+                {view === 'home' && (
+                    <OrderTrackingCompact />
                 )}
 
                 {view === 'home' && (
@@ -378,7 +393,7 @@ export default function Storefront({
 
                 {panel && <button className="drawer-backdrop" aria-label="بستن پنل" onClick={() => setPanel(null)} />}
                 {panel === 'cart' && (
-                    <CartDrawer cart={cart} setCart={setCart} close={() => setPanel(null)} />
+                    <CartDrawer cart={cart} setCart={setCart} close={() => setPanel(null)} shippingMethods={shippingMethods} />
                 )}
                 {panel === 'account' && <AccountDrawer auth={auth} close={() => setPanel(null)} />}
             </div>
@@ -612,11 +627,13 @@ function Account({ orders, auth }: { orders: Order[]; auth: any }) {
         first_name: auth?.user?.first_name || '',
         last_name: auth?.user?.last_name || '',
         phone_number: auth?.user?.phone_number || '',
+        postal_code: auth?.user?.postal_code || '',
+        address: auth?.user?.address || '',
         email: auth?.user?.email || '',
         password: '',
         password_confirmation: '',
     });
-    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', processing: 'در حال آماده‌سازی', pending_review: 'در انتظار بررسی رسید', completed: 'تکمیل‌شده', cancelled: 'لغوشده', failed: 'ناموفق', refunded: 'مرجوع‌شده' };
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
     return (
         <main className="page account">
             <h1>حساب کاربری من</h1>
@@ -636,7 +653,11 @@ function Account({ orders, auth }: { orders: Order[]; auth: any }) {
                         <div className="stats"><b>{new Intl.NumberFormat('fa-IR').format(orders.length)}<small>کل سفارش‌ها</small></b><b>{new Intl.NumberFormat('fa-IR').format(orders.filter((order) => order.status === 'completed').length)}<small>تکمیل‌شده</small></b></div>
                         <div className="customer-orders">
                             {orders.length ? orders.map((order) => (
-                                <article key={order.id}><span><b>سفارش {order.number}</b><small>{labels[order.status] || order.status}</small></span><strong>{toman(Number(order.total))}</strong>{order.invoice_token && <Link href={`/orders/${order.id}/invoice/${order.invoice_token}`}>مشاهده فاکتور</Link>}</article>
+                                <article key={order.id}>
+                                    <span><b>سفارش {order.number}</b><small>{labels[order.status] || order.status}</small></span>
+                                    <strong>{toman(Number(order.total))}</strong>
+                                    {order.invoice_token && <span className="invoice-links"><Link href={`/orders/${order.id}/invoice/${order.invoice_token}`}>مشاهده فاکتور</Link><a href={`/orders/${order.id}/invoice/${order.invoice_token}/pdf`} target="_blank" rel="noreferrer">دانلود PDF</a></span>}
+                                </article>
                             )) : <p>هنوز سفارشی ثبت نکرده‌اید.</p>}
                         </div>
                     </> : <>
@@ -644,6 +665,8 @@ function Account({ orders, auth }: { orders: Order[]; auth: any }) {
                         <form className="profile-form" onSubmit={(event) => { event.preventDefault(); profile.patch(route('account.profile.update'), { preserveScroll: true, onSuccess: () => profile.reset('password', 'password_confirmation') }); }}>
                             <div className="admin-two"><label>نام<input value={profile.data.first_name} onChange={(event) => profile.setData('first_name', event.target.value)} /></label><label>نام خانوادگی<input value={profile.data.last_name} onChange={(event) => profile.setData('last_name', event.target.value)} /></label></div>
                             <label>شماره موبایل<input inputMode="tel" value={profile.data.phone_number} onChange={(event) => profile.setData('phone_number', event.target.value)} /></label>
+                            <label>کد پستی<input inputMode="numeric" value={profile.data.postal_code} onChange={(event) => profile.setData('postal_code', event.target.value)} /></label>
+                            <label>آدرس کامل<textarea value={profile.data.address} onChange={(event) => profile.setData('address', event.target.value)} /></label>
                             <label>ایمیل<input type="email" value={profile.data.email} onChange={(event) => profile.setData('email', event.target.value)} /></label>
                             <div className="admin-two"><label>رمز عبور جدید (اختیاری)<input type="password" value={profile.data.password} onChange={(event) => profile.setData('password', event.target.value)} /></label><label>تکرار رمز جدید<input type="password" value={profile.data.password_confirmation} onChange={(event) => profile.setData('password_confirmation', event.target.value)} /></label></div>
                             {Object.keys(profile.errors).length > 0 && <div className="form-error-box">{Object.values(profile.errors)[0]}</div>}
@@ -656,19 +679,27 @@ function Account({ orders, auth }: { orders: Order[]; auth: any }) {
     );
 }
 
-function Checkout({ cart, shippingMethods, clearCart, auth }: { cart: CardProduct[]; shippingMethods: ShippingMethod[]; clearCart: () => void; auth: any }) {
+function Checkout({ cart, shippingMethods, clearCart, auth, cardToCard }: { cart: CardProduct[]; shippingMethods: ShippingMethod[]; clearCart: () => void; auth: any; cardToCard?: { number: string; holder: string } }) {
     const quantities = Object.values(cart.reduce<Record<number, { product_id: number; quantity: number }>>((items, product) => {
         items[product.id] = items[product.id] || { product_id: product.id, quantity: 0 };
         items[product.id].quantity++;
         return items;
     }, {}));
+    const groupedCart = Object.values(cart.reduce<Record<number, { product: CardProduct; quantity: number }>>((items, product) => {
+        items[product.id] = items[product.id] || { product, quantity: 0 };
+        items[product.id].quantity++;
+        return items;
+    }, {}));
     const form = useForm({
-        customer_name: [auth?.user?.first_name, auth?.user?.last_name].filter(Boolean).join(' '),
+        first_name: auth?.user?.first_name || '',
+        last_name: auth?.user?.last_name || '',
         phone: auth?.user?.phone_number || '',
-        postal_code: '',
-        address: '',
+        postal_code: auth?.user?.postal_code || '',
+        address: auth?.user?.address || '',
         shipping_method: shippingMethods[0]?.code || '',
-        payment_method: 'card_to_card',
+        payment_method: 'zarinpal',
+        card_amount: '',
+        receipt: null as File | null,
         items: quantities,
     });
     const shipping = shippingMethods.find((method) => method.code === form.data.shipping_method);
@@ -676,13 +707,16 @@ function Checkout({ cart, shippingMethods, clearCart, auth }: { cart: CardProduc
     return (
         <main className="page checkout">
             <h1>تکمیل سفارش</h1>
+            {!auth?.user && <div className="checkout-auth-choice"><div><b>خرید بدون ثبت‌نام</b><small>اطلاعات گیرنده را وارد کنید و مستقیم پرداخت کنید.</small></div><span>یا</span><Link href="/login">ورود</Link><Link href="/register">ثبت‌نام</Link></div>}
+            {auth?.user && <div className="checkout-user-note">سفارش برای حساب <b>{auth.user.first_name} {auth.user.last_name}</b> ثبت می‌شود و در پنل شما قابل مشاهده است.</div>}
             <div className="checkout-grid">
-                <form onSubmit={(event) => { event.preventDefault(); form.post(route('checkout.store'), { onSuccess: clearCart }); }}>
+                <form onSubmit={(event) => { event.preventDefault(); form.post(route('checkout.store'), { forceFormData: form.data.payment_method === 'card_to_card', onSuccess: clearCart }); }}>
                     <h3>مشخصات تحویل‌گیرنده</h3>
                     <div className="admin-two">
-                        <input placeholder="نام و نام خانوادگی" value={form.data.customer_name} onChange={(event) => form.setData('customer_name', event.target.value)} />
-                        <input placeholder="شماره موبایل" inputMode="tel" value={form.data.phone} onChange={(event) => form.setData('phone', event.target.value)} />
+                        <input placeholder="نام" value={form.data.first_name} onChange={(event) => form.setData('first_name', event.target.value)} />
+                        <input placeholder="نام خانوادگی" value={form.data.last_name} onChange={(event) => form.setData('last_name', event.target.value)} />
                     </div>
+                    <input placeholder="شماره موبایل" inputMode="tel" value={form.data.phone} onChange={(event) => form.setData('phone', event.target.value)} />
                     <input placeholder="کد پستی ۱۰ رقمی" inputMode="numeric" value={form.data.postal_code} onChange={(event) => form.setData('postal_code', event.target.value)} />
                     <textarea placeholder="آدرس کامل گیرنده" value={form.data.address} onChange={(event) => form.setData('address', event.target.value)} />
                     <h3>روش ارسال</h3>
@@ -694,27 +728,41 @@ function Checkout({ cart, shippingMethods, clearCart, auth }: { cart: CardProduc
                         </label>
                     )) : <p>در حال حاضر روش ارسال فعالی تعریف نشده است.</p>}
                     <h3>روش پرداخت</h3>
-                    <label><input type="radio" name="pay" checked={form.data.payment_method === 'card_to_card'} onChange={() => form.setData('payment_method', 'card_to_card')} /> کارت به کارت و بررسی پرداخت</label>
-                    <label><input type="radio" name="pay" checked={form.data.payment_method === 'zarinpal'} onChange={() => form.setData('payment_method', 'zarinpal')} /> پرداخت آنلاین</label>
+                    <label className="payment-choice"><input type="radio" name="pay" checked={form.data.payment_method === 'zarinpal'} onChange={() => form.setData('payment_method', 'zarinpal')} /> پرداخت امن آنلاین با زرین‌پال</label>
+                    <label className="payment-choice"><input type="radio" name="pay" checked={form.data.payment_method === 'card_to_card'} onChange={() => form.setData('payment_method', 'card_to_card')} /> کارت‌به‌کارت و بارگذاری فیش</label>
+                    {form.data.payment_method === 'card_to_card' && <div className="card-payment-box">
+                        <small>مبلغ سفارش را به کارت زیر واریز کنید:</small>
+                        <b className="card-number" dir="ltr">{(cardToCard?.number || '6037997199529528').replace(/(\d{4})(?=\d)/g, '$1 ')}</b>
+                        <span>به نام {cardToCard?.holder || 'سید محمد یوسف سادات فخر'}</span>
+                        <label>مبلغ واریزی (تومان)<input inputMode="numeric" value={form.data.card_amount} onChange={(event) => form.setData('card_amount', event.target.value)} placeholder={String(subtotal + Number(shipping?.cost || 0))} /></label>
+                        <label className="receipt-upload">تصویر فیش واریزی<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => form.setData('receipt', event.target.files?.[0] || null)} /><small>{form.data.receipt?.name || 'حداکثر ۵ مگابایت'}</small></label>
+                    </div>}
                     {Object.keys(form.errors).length > 0 && <div className="form-error-box">{Object.values(form.errors)[0]}</div>}
-                    <button className="primary" disabled={form.processing || cart.length === 0 || !form.data.shipping_method}>{form.processing ? 'در حال ثبت...' : 'ثبت سفارش'}</button>
+                    <button className="primary" disabled={form.processing || cart.length === 0 || !form.data.shipping_method}>{form.processing ? 'در حال ثبت...' : form.data.payment_method === 'card_to_card' ? 'ثبت فیش و سفارش' : 'پرداخت با زرین‌پال'}</button>
                 </form>
                 <aside>
                     <h3>خلاصه سفارش</h3>
-                    <p>{cart.length} کالا در سبد شما</p>
+                    <div className="checkout-items">
+                        {groupedCart.map(({ product, quantity }) => <div key={product.id}>{product.image ? <img src={product.image} alt={product.name} /> : <span className="mini-placeholder" />}<span><b>{product.name}</b><small>{quantity} × {toman(product.sale || product.price)}</small></span><strong>{toman((product.sale || product.price) * quantity)}</strong></div>)}
+                    </div>
                     <p>هزینه ارسال: {shipping ? (Number(shipping.cost) ? toman(Number(shipping.cost)) : 'رایگان') : '—'}</p>
-                    <b>{toman(subtotal + Number(shipping?.cost || 0))}</b>
+                    <div className="checkout-grand"><span>جمع کل</span><b>{toman(subtotal + Number(shipping?.cost || 0))}</b></div>
                 </aside>
             </div>
         </main>
     );
 }
 
-function Invoice({ order, shipping }: { order: Order; shipping?: ShippingMethod }) {
-    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', processing: 'در حال آماده‌سازی', pending_review: 'در انتظار بررسی پرداخت', completed: 'تکمیل‌شده', cancelled: 'لغوشده', failed: 'ناموفق', refunded: 'مرجوع‌شده' };
+function Invoice({ order, shipping, clearCart }: { order: Order; shipping?: ShippingMethod; clearCart: () => void }) {
+    const { props } = usePage<any>();
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
+    useEffect(() => {
+        if (order.paid_at) clearCart();
+    }, [order.paid_at]);
     return (
         <main className="page invoice-page">
-            <div className="invoice-actions"><Link href="/">بازگشت به فروشگاه</Link><button onClick={() => window.print()}>چاپ فاکتور</button></div>
+            {props.flash?.status && <div className="payment-success"><b>پرداخت موفق</b><span>{props.flash.status}</span></div>}
+            <div className="invoice-actions"><Link href="/">بازگشت به فروشگاه</Link><span><a href={`/orders/${order.id}/invoice/${order.invoice_token}/pdf`} target="_blank" rel="noreferrer">دانلود فاکتور PDF</a><button onClick={() => window.print()}>چاپ فاکتور</button></span></div>
             <section className="invoice-sheet">
                 <header><div className="logo">air<span>gadget</span></div><div><b>فاکتور فروش</b><small>شماره: {order.number}</small></div></header>
                 <div className="invoice-meta">
@@ -722,6 +770,8 @@ function Invoice({ order, shipping }: { order: Order; shipping?: ShippingMethod 
                     <p><b>موبایل:</b> {order.address?.phone}</p>
                     <p><b>کد پستی:</b> {order.address?.postal_code}</p>
                     <p><b>وضعیت:</b> {labels[order.status] || order.status}</p>
+                    {order.payment_reference && <p><b>پیگیری پرداخت:</b> {order.payment_reference}</p>}
+                    {order.payment_method === 'card_to_card' && <p><b>روش پرداخت:</b> کارت‌به‌کارت</p>}
                     <p className="invoice-address"><b>آدرس:</b> {order.address?.full}</p>
                 </div>
                 <div className="invoice-table">
@@ -735,6 +785,58 @@ function Invoice({ order, shipping }: { order: Order; shipping?: ShippingMethod 
                 </div>
                 <footer>ایرگجت ـ خراسان رضوی، مشهد، عبدالمطلب ۳۵ ـ پشتیبانی {supportPhone}</footer>
             </section>
+        </main>
+    );
+}
+
+function OrderTrackingCompact() {
+    const form = useForm({ number: '', phone: '' });
+    return (
+        <section className="tracking-compact">
+            <div><em>پیگیری سریع</em><h2>سفارشتان کجاست؟</h2><p>کد سفارش و شماره موبایل ثبت‌شده را وارد کنید.</p></div>
+            <form onSubmit={(event) => { event.preventDefault(); router.get(route('orders.track'), form.data); }}>
+                <input value={form.data.number} onChange={(event) => form.setData('number', event.target.value.toUpperCase())} placeholder="کد سفارش، مانند AG-..." dir="ltr" />
+                <input value={form.data.phone} onChange={(event) => form.setData('phone', event.target.value)} placeholder="شماره موبایل" inputMode="tel" dir="ltr" />
+                <button className="primary">پیگیری سفارش</button>
+            </form>
+        </section>
+    );
+}
+
+function OrderTracking({ order, error }: { order?: Order; error?: string }) {
+    const form = useForm({ number: order?.number || '', phone: order?.address?.phone || '' });
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
+    const steps = ['pending_review', 'processing', 'completed'];
+    const activeStep = steps.indexOf(order?.status || '');
+    return (
+        <main className="page tracking-page">
+            <h1>پیگیری سفارش</h1>
+            <form className="tracking-form" onSubmit={(event) => { event.preventDefault(); router.get(route('orders.track'), form.data, { preserveState: true }); }}>
+                <input value={form.data.number} onChange={(event) => form.setData('number', event.target.value.toUpperCase())} placeholder="کد سفارش" dir="ltr" />
+                <input value={form.data.phone} onChange={(event) => form.setData('phone', event.target.value)} placeholder="شماره موبایل سفارش" inputMode="tel" dir="ltr" />
+                <button className="primary" disabled={form.processing}>بررسی وضعیت</button>
+            </form>
+            {error && <div className="form-error-box">{error}</div>}
+            {order && <section className="tracking-result">
+                <div className="tracking-heading"><span><small>کد سفارش</small><b>{order.number}</b></span><strong>{labels[order.status] || order.status}</strong></div>
+                <div className="order-progress">
+                    {steps.map((step, index) => <div className={activeStep >= index ? 'done' : ''} key={step}><i>{activeStep >= index ? '✓' : index + 1}</i><span>{labels[step]}</span></div>)}
+                </div>
+                <div className="tracking-products">{order.items?.map((item) => <p key={item.id || item.sku}><span>{item.name} × {item.quantity}</span><b>{toman(Number(item.price || 0) * item.quantity)}</b></p>)}</div>
+                <div className="tracking-total"><span>جمع سفارش</span><b>{toman(Number(order.total))}</b></div>
+            </section>}
+        </main>
+    );
+}
+
+function PaymentResult({ result }: { result: { success?: boolean; number?: string; message?: string } }) {
+    return (
+        <main className="page payment-result">
+            <div className={result?.success ? 'result-icon success' : 'result-icon failed'}>{result?.success ? '✓' : '×'}</div>
+            <h1>{result?.success ? 'پرداخت موفق بود' : 'پرداخت انجام نشد'}</h1>
+            {result?.number && <p>کد سفارش: <b>{result.number}</b></p>}
+            <p>{result?.message}</p>
+            <div><Link className="primary" href="/">بازگشت به فروشگاه</Link><Link className="secondary" href="/track-order">پیگیری سفارش</Link></div>
         </main>
     );
 }
@@ -1054,7 +1156,7 @@ function ArticleManager({ article }: { article: Article }) {
 }
 
 function AccountingPanel({ accounting, orders }: { accounting: Accounting; orders: Order[] }) {
-    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', processing: 'پرداخت‌شده / در حال آماده‌سازی', pending_review: 'بررسی رسید', completed: 'تکمیل‌شده', cancelled: 'لغوشده', failed: 'ناموفق', refunded: 'مرجوع‌شده' };
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
     return (
         <section className="admin-panel">
             <div className="accounting-cards">
@@ -1069,11 +1171,27 @@ function AccountingPanel({ accounting, orders }: { accounting: Accounting; order
             <div className="orders-table">
                 {orders.length ? orders.map((order) => (
                     <article key={order.id}>
-                        <span><b>سفارش {order.number}</b><small>{order.user?.first_name || order.address?.customer_name || order.user?.phone_number || order.address?.phone || 'مهمان'} · {new Intl.DateTimeFormat('fa-IR').format(new Date(order.created_at))}</small></span>
-                        <span><b>{toman(Number(order.total))}</b><small>{order.items?.reduce((sum, item) => sum + Number(item.quantity), 0) || 0} کالا</small></span>
-                        <select value={order.status} onChange={(event) => router.patch(route('admin.orders.status', order.id), { status: event.target.value }, { preserveScroll: true })}>
-                            {Object.entries(labels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-                        </select>
+                        <div className="admin-order-head">
+                            <span><b>سفارش {order.number}</b><small>{order.address?.customer_name || 'مهمان'} · {new Intl.DateTimeFormat('fa-IR').format(new Date(order.created_at))}</small></span>
+                            <span><b>{toman(Number(order.total))}</b><small>{order.items?.reduce((sum, item) => sum + Number(item.quantity), 0) || 0} کالا</small></span>
+                            <select value={order.status} onChange={(event) => router.patch(route('admin.orders.status', order.id), { status: event.target.value }, { preserveScroll: true })}>
+                                {Object.entries(labels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                            </select>
+                        </div>
+                        <div className="admin-order-customer">
+                            <span><b>مشتری:</b> {order.address?.customer_name}</span>
+                            <span><b>موبایل:</b> {order.address?.phone}</span>
+                            <span><b>کد پستی:</b> {order.address?.postal_code}</span>
+                            <span className="wide"><b>آدرس:</b> {order.address?.full}</span>
+                        </div>
+                        <div className="admin-order-items">
+                            {order.items?.map((item) => <p key={item.id || item.sku}><span>{item.name}</span><span>{item.quantity} عدد</span><span>واحد: {toman(Number(item.price || 0))}</span><b>کل: {toman(Number(item.price || 0) * item.quantity)}</b></p>)}
+                        </div>
+                        <div className="admin-order-actions">
+                            <span>ارسال: {toman(Number(order.shipping_cost || 0))} · جمع کل: <b>{toman(Number(order.total))}</b></span>
+                            {order.payment_method === 'card_to_card' && <span className="receipt-summary">واریزی اعلام‌شده: <b>{toman(Number(order.card_to_card_amount || 0))}</b>{order.payment_receipt && <a href={route('admin.orders.receipt', order.id)} target="_blank" rel="noreferrer">مشاهده فیش</a>}</span>}
+                            {order.invoice_token && <><Link href={`/orders/${order.id}/invoice/${order.invoice_token}`}>فاکتور</Link><a href={`/orders/${order.id}/invoice/${order.invoice_token}/pdf`} target="_blank" rel="noreferrer">PDF فاکتور</a></>}
+                        </div>
                     </article>
                 )) : <p>هنوز سفارشی ثبت نشده است؛ آمار مالی صفر و واقعی است.</p>}
             </div>
@@ -1104,25 +1222,37 @@ function ShippingPanel({ methods }: { methods: ShippingMethod[] }) {
     );
 }
 
-function CartDrawer({ cart, setCart, close }: any) {
+function CartDrawer({ cart, setCart, close, shippingMethods }: any) {
+    const grouped = Object.values((cart as CardProduct[]).reduce<Record<number, { product: CardProduct; quantity: number }>>((items, product) => {
+        items[product.id] = items[product.id] || { product, quantity: 0 };
+        items[product.id].quantity++;
+        return items;
+    }, {}));
+    const shipping = (shippingMethods as ShippingMethod[]).find((method) => method.is_active);
+    const subtotal = cart.reduce((sum: number, product: CardProduct) => sum + (product.sale || product.price), 0);
+    const removeOne = (productId: number) => setCart((items: CardProduct[]) => {
+        const index = items.findIndex((item) => item.id === productId);
+        return index < 0 ? items : items.filter((_, itemIndex) => itemIndex !== index);
+    });
     return (
         <aside className="drawer">
             <button className="close" aria-label="بستن" onClick={close}>×</button>
             <h2>سبد خرید شما</h2>
             {cart.length ? (
                 <>
-                    {cart.map((p: CardProduct, i: number) => (
-                        <div className="cart-item" key={`${p.id}-${i}`}>
-                            {p.image && <img src={p.image} alt="" />}
-                            <span>{p.name}<small>{toman(p.sale || p.price)}</small></span>
-                            <button aria-label={`حذف ${p.name}`} onClick={() => setCart((items: CardProduct[]) => items.filter((_, index) => index !== i))}>
-                                ×
-                            </button>
+                    {grouped.map(({ product, quantity }) => (
+                        <div className="cart-item" key={product.id}>
+                            {product.image ? <img src={product.image} alt={product.name} /> : <span className="mini-placeholder" />}
+                            <span><b>{product.name}</b><small>قیمت واحد: {toman(product.sale || product.price)}</small><strong>جمع: {toman((product.sale || product.price) * quantity)}</strong></span>
+                            <div className="cart-quantity">
+                                <button aria-label={`کم کردن ${product.name}`} onClick={() => removeOne(product.id)}>−</button>
+                                <b>{quantity}</b>
+                                <button aria-label={`اضافه کردن ${product.name}`} disabled={quantity >= product.stock} onClick={() => setCart((items: CardProduct[]) => [...items, product])}>+</button>
+                            </div>
                         </div>
                     ))}
-                    <div className="total">
-                        جمع کل <b>{toman(cart.reduce((sum: number, p: CardProduct) => sum + (p.sale || p.price), 0))}</b>
-                    </div>
+                    <div className="cart-cost"><span>جمع محصولات <b>{toman(subtotal)}</b></span><span>هزینه ارسال <b>{shipping ? (Number(shipping.cost) ? toman(Number(shipping.cost)) : 'رایگان') : 'در تسویه‌حساب'}</b></span></div>
+                    <div className="total">جمع کل <b>{toman(subtotal + Number(shipping?.cost || 0))}</b></div>
                     <Link className="primary full" href="/checkout">ادامه و پرداخت</Link>
                 </>
             ) : (

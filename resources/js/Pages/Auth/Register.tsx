@@ -3,7 +3,7 @@ import { Head, Link, useForm } from '@inertiajs/react';
 import GuestLayout from '@/Layouts/GuestLayout';
 
 export default function Register({ phone = '' }: { phone?: string }) {
-    const form = useForm({ first_name: '', last_name: '', phone_number: phone, email: '', password: '', password_confirmation: '' });
+    const form = useForm({ first_name: '', last_name: '', phone_number: phone, postal_code: '', address: '', email: '', password: '', password_confirmation: '' });
     const submit: FormEventHandler = (event) => {
         event.preventDefault();
         form.post(route('register'), { onFinish: () => form.reset('password', 'password_confirmation') });
@@ -24,6 +24,12 @@ export default function Register({ phone = '' }: { phone?: string }) {
                 <label>شماره موبایل</label>
                 <input type="tel" inputMode="numeric" placeholder="۰۹۱۲۱۲۳۴۵۶۷" value={form.data.phone_number} onChange={(event) => form.setData('phone_number', event.target.value)} />
                 {form.errors.phone_number && <small className="auth-error">{form.errors.phone_number}</small>}
+                <label>کد پستی</label>
+                <input inputMode="numeric" placeholder="کد پستی ۱۰ رقمی" value={form.data.postal_code} onChange={(event) => form.setData('postal_code', event.target.value)} />
+                {form.errors.postal_code && <small className="auth-error">{form.errors.postal_code}</small>}
+                <label>آدرس کامل</label>
+                <textarea value={form.data.address} onChange={(event) => form.setData('address', event.target.value)} />
+                {form.errors.address && <small className="auth-error">{form.errors.address}</small>}
                 <label>ایمیل</label>
                 <input type="email" value={form.data.email} onChange={(event) => form.setData('email', event.target.value)} />
                 {form.errors.email && <small className="auth-error">{form.errors.email}</small>}

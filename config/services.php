@@ -31,4 +31,17 @@ return [
         ],
     ],
 
+    'zarinpal' => [
+        'merchant_id' => env('ZARINPAL_MERCHANT_ID'),
+        'request_url' => env('ZARINPAL_REQUEST_URL', 'https://payment.zarinpal.com/pg/v4/payment/request.json'),
+        'verify_url' => env('ZARINPAL_VERIFY_URL', 'https://payment.zarinpal.com/pg/v4/payment/verify.json'),
+        'gateway_url' => env('ZARINPAL_GATEWAY_URL', 'https://payment.zarinpal.com/pg/StartPay'),
+        'mock' => env('ZARINPAL_MOCK', false),
+    ],
+
+    'card_to_card' => [
+        'card_number' => env('CARD_TO_CARD_NUMBER', '6037997199529528'),
+        'holder' => env('CARD_TO_CARD_HOLDER', 'سید محمد یوسف سادات فخر'),
+    ],
+
 ];

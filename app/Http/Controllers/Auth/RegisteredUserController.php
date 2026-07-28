@@ -35,11 +35,19 @@ class RegisteredUserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        $request->merge(['phone_number' => Phone::normalize($request->input('phone_number'))]);
+        $request->merge([
+            'phone_number' => Phone::normalize($request->input('phone_number')),
+            'postal_code' => strtr((string) $request->input('postal_code'), [
+                '۰'=>'0', '۱'=>'1', '۲'=>'2', '۳'=>'3', '۴'=>'4',
+                '۵'=>'5', '۶'=>'6', '۷'=>'7', '۸'=>'8', '۹'=>'9',
+            ]),
+        ]);
         $validated = $request->validate([
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'phone_number' => ['required', 'regex:/^09\d{9}$/', Rule::unique(User::class)],
+            'postal_code' => ['required', 'regex:/^\d{10}$/'],
+            'address' => ['required', 'string', 'max:1000'],
             'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ], ['phone_number.regex' => 'شماره موبایل را به‌صورت ۰۹xxxxxxxxx وارد کنید.', 'phone_number.unique' => 'این شماره موبایل قبلاً ثبت شده است.']);
@@ -49,6 +57,8 @@ class RegisteredUserController extends Controller
             'first_name' => $validated['first_name'],
             'last_name' => $validated['last_name'],
             'phone_number' => $validated['phone_number'],
+            'postal_code' => $validated['postal_code'],
+            'address' => $validated['address'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
             'is_admin' => $isAdmin,

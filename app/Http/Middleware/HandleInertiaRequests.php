@@ -37,6 +37,11 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'status' => fn () => $request->session()->get('status'),
             ],
+            'shippingMethods' => fn () => \App\Models\StoreSetting::shippingMethods(),
+            'cardToCard' => [
+                'number' => config('services.card_to_card.card_number'),
+                'holder' => config('services.card_to_card.holder'),
+            ],
         ];
     }
 }
