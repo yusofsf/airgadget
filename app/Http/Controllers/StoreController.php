@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\Order;
 use App\Models\StoreSetting;
 use App\Models\Tag;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 class StoreController extends Controller {
  public function home(){return Inertia::render('Storefront',['view'=>'home','products'=>Product::with(['brand','images'])->where('is_active',true)->latest()->take(8)->get(),'categoryCounts'=>Category::whereHas('products',fn($query)=>$query->where('is_active',true))->withCount(['products'=>fn($query)=>$query->where('is_active',true)])->get(['id','name','slug'])]);}
@@ -15,7 +16,13 @@ class StoreController extends Controller {
  public function articles(){return Inertia::render('Storefront',['view'=>'articles','articles'=>Article::with('tags')->where('is_published',true)->latest('published_at')->paginate(12),'topics'=>Article::where('is_published',true)->whereNotNull('topic')->select('topic')->distinct()->orderBy('topic')->pluck('topic'),'tags'=>Tag::has('articles')->orderBy('name')->get(['id','name','slug'])]);}
  public function article(Article $article){abort_unless($article->is_published,404);return Inertia::render('Storefront',['view'=>'article','article'=>$article->load('tags')]);}
  public function page(string $page){return Inertia::render('Storefront',['view'=>$page]);}
- public function account(){return Inertia::render('Storefront',['view'=>'account','orders'=>auth()->user()->orders()->with('items')->latest()->get()]);}
+ public function account(){
+  $user=request()->user();
+  $orders=$user && Schema::hasTable('orders') && Schema::hasTable('order_items')
+   ? $user->orders()->with('items')->latest()->get()
+   : collect();
+  return Inertia::render('Storefront',['view'=>'account','orders'=>$orders]);
+ }
  public function checkout(){return Inertia::render('Storefront',['view'=>'checkout','shippingMethods'=>collect(StoreSetting::shippingMethods())->where('is_active',true)->values()]);}
  public function admin(){
   $paid=Order::whereIn('status',['processing','completed']);
