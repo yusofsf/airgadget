@@ -9,6 +9,7 @@ use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('admin can browse order summaries and open complete order details', function () {
@@ -73,6 +74,7 @@ test('storefront is declared as Persian and right to left', function () {
 });
 
 test('article can be created without a topic or meta keywords', function () {
+    Storage::fake('public');
     $admin = User::factory()->create(['is_admin' => true]);
 
     $this->actingAs($admin)
@@ -80,6 +82,7 @@ test('article can be created without a topic or meta keywords', function () {
             'title' => 'مقاله بدون موضوع',
             'body' => 'متن کامل مقاله آزمایشی',
             'excerpt' => 'خلاصه مقاله',
+            'main_image' => UploadedFile::fake()->image('article.jpg', 800, 500),
         ])
         ->assertSessionHasNoErrors()
         ->assertRedirect(route('admin'));
@@ -87,7 +90,9 @@ test('article can be created without a topic or meta keywords', function () {
     $article = Article::where('title', 'مقاله بدون موضوع')->firstOrFail();
 
     expect($article->topic)->toBeNull()
-        ->and($article->meta_keywords)->toBeNull();
+        ->and($article->meta_keywords)->toBeNull()
+        ->and($article->image)->toStartWith('/storage/articles/');
+    Storage::disk('public')->assertExists(Str::after($article->image, '/storage/'));
 });
 
 test('product and article taxonomies are stored and can be edited or deleted', function () {

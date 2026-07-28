@@ -26,6 +26,7 @@
         <env name="DB_DATABASE" value=":memory:"/>
         <env name="ADMIN_PHONE" value="09120000000"/>
         <env name="MAIL_MAILER" value="array"/>
+        <env name="STORE_LOG_CHANNEL" value="null"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

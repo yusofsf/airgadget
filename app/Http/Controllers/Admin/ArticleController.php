@@ -9,8 +9,11 @@ use App\Models\Tag;
 use App\Support\PersianSlug;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class ArticleController extends Controller
 {
@@ -69,7 +72,7 @@ class ArticleController extends Controller
             'excerpt' => $validated['excerpt'] ?? null,
             'body' => $validated['body'],
             'image' => $request->file('main_image')
-                ? '/storage/'.$request->file('main_image')->store('articles', 'public')
+                ? $this->storeArticleImage($request->file('main_image'))
                 : null,
             'meta_title' => $validated['meta_title'] ?? $validated['title'],
             'meta_description' => $validated['meta_description'] ?? ($validated['excerpt'] ?? null),
@@ -126,5 +129,71 @@ class ArticleController extends Controller
     private function uniqueCategorySlug(string $value): string
     {
         return PersianSlug::unique(ArticleCategory::class, $value);
+    }
+
+    private function storeArticleImage(UploadedFile $image): string
+    {
+        $root = (string) config('filesystems.disks.public.root');
+        $articlesPath = $root.DIRECTORY_SEPARATOR.'articles';
+        $writableTarget = is_dir($articlesPath) ? $articlesPath : $root;
+        $context = [
+            'original_name' => basename($image->getClientOriginalName()),
+            'client_mime' => $image->getClientMimeType(),
+            'size_bytes' => $image->getSize(),
+            'upload_error' => $image->getError(),
+            'is_valid' => $image->isValid(),
+            'destination_root' => $articlesPath,
+            'destination_exists' => is_dir($articlesPath),
+            'writable_path_checked' => $writableTarget,
+            'destination_writable' => is_writable($writableTarget),
+            'php_upload_max_filesize' => ini_get('upload_max_filesize'),
+            'php_post_max_size' => ini_get('post_max_size'),
+            'request_content_length' => request()->server('CONTENT_LENGTH'),
+        ];
+        $this->uploadLog('info', 'article_image.storage_started', $context);
+
+        try {
+            $disk = Storage::disk('public');
+            $storedPath = $image->store('articles', 'public');
+
+            if (! is_string($storedPath) || $storedPath === '' || ! $disk->exists($storedPath)) {
+                throw new \RuntimeException('The uploaded article image could not be verified on disk.');
+            }
+
+            $this->uploadLog('info', 'article_image.storage_succeeded', [
+                ...$context,
+                'stored_path' => $storedPath,
+                'absolute_path' => $disk->path($storedPath),
+                'stored_size_bytes' => $disk->size($storedPath),
+            ]);
+        } catch (\Throwable $exception) {
+            $this->uploadLog('error', 'article_image.storage_failed', [
+                ...$context,
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+                'code' => $exception->getCode(),
+                'last_php_error' => error_get_last(),
+            ]);
+            report($exception);
+
+            throw ValidationException::withMessages([
+                'main_image' => 'ذخیره تصویر مقاله روی هاست انجام نشد؛ فایل لاگ فروشگاه را بررسی کنید.',
+            ]);
+        }
+
+        return '/storage/'.$storedPath;
+    }
+
+    private function uploadLog(string $level, string $event, array $context): void
+    {
+        try {
+            Log::channel(config('logging.store_channel', 'store'))->log($level, $event, [
+                'request_id' => request()->attributes->get('store_request_id'),
+                'user_id' => request()->user()?->getAuthIdentifier(),
+                ...$context,
+            ]);
+        } catch (\Throwable $loggingException) {
+            report($loggingException);
+        }
     }
 }

@@ -20,6 +20,8 @@ return [
 
     'default' => env('LOG_CHANNEL', 'stack'),
 
+    'store_channel' => env('STORE_LOG_CHANNEL', 'store'),
+
     /*
     |--------------------------------------------------------------------------
     | Deprecations Log Channel
@@ -71,6 +73,16 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+        ],
+
+        'store' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/store.log'),
+            'level' => env('STORE_LOG_LEVEL', 'debug'),
+            'days' => env('STORE_LOG_DAYS', 30),
+            'replace_placeholders' => true,
+            'locking' => true,
+            'permission' => 0664,
         ],
 
         'slack' => [

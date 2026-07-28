@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -25,6 +26,12 @@ class ProductController extends Controller
 {
     public function storeImage(Request $request, Product $product): JsonResponse
     {
+        $this->uploadLog('info', 'product_image.request_received', [
+            'product_id' => $product->id,
+            'has_image' => $request->hasFile('image'),
+            'content_length' => $request->server('CONTENT_LENGTH'),
+        ]);
+
         $validated = $request->validate([
             'image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'is_main' => ['nullable', 'boolean'],
@@ -47,6 +54,13 @@ class ProductController extends Controller
             'gallery' => $gallery->all(),
         ]);
 
+        $this->uploadLog('info', 'product_image.database_updated', [
+            'product_id' => $product->id,
+            'product_image_id' => $image->id,
+            'path' => $image->path,
+            'main_image' => $product->main_image,
+        ]);
+
         return response()->json([
             'id' => $image->id,
             'path' => $image->path,
@@ -58,17 +72,43 @@ class ProductController extends Controller
     {
         abort_unless((bool) preg_match('/\A[a-zA-Z0-9._-]+\z/', $filename), 404);
 
-        $disk = Storage::disk('product_images');
-        $path = $filename;
+        try {
+            $diskName = 'product_images';
+            $disk = Storage::disk($diskName);
+            $path = $filename;
 
-        // Keep images uploaded before the public uploads directory was added
-        // available while new uploads are written to the host's public folder.
-        if (! $disk->exists($path)) {
-            $disk = Storage::disk('public');
-            $path = "products/{$filename}";
+            // Keep images uploaded before the public uploads directory was added
+            // available while new uploads are written to the host's public folder.
+            if (! $disk->exists($path)) {
+                $diskName = 'public';
+                $disk = Storage::disk($diskName);
+                $path = "products/{$filename}";
+            }
+        } catch (\Throwable $exception) {
+            $this->uploadLog('error', 'product_image.lookup_failed', [
+                'filename' => $filename,
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            throw $exception;
         }
 
-        abort_unless($disk->exists($path), 404);
+        if (! $disk->exists($path)) {
+            $this->uploadLog('warning', 'product_image.not_found', [
+                'filename' => $filename,
+                'new_path' => config('filesystems.disks.product_images.root').DIRECTORY_SEPARATOR.$filename,
+                'legacy_path' => config('filesystems.disks.public.root').DIRECTORY_SEPARATOR.'products'.DIRECTORY_SEPARATOR.$filename,
+            ]);
+            abort(404);
+        }
+
+        $this->uploadLog('debug', 'product_image.served', [
+            'filename' => $filename,
+            'disk' => $diskName,
+            'path' => $disk->path($path),
+            'size_bytes' => $disk->size($path),
+        ]);
 
         return response()->file(
             $disk->path($path),
@@ -368,6 +408,26 @@ class ProductController extends Controller
 
     private function storeProductImage(UploadedFile $image): string
     {
+        $root = (string) config('filesystems.disks.product_images.root');
+        $writableTarget = is_dir($root) ? $root : dirname($root);
+        $context = [
+            'original_name' => basename($image->getClientOriginalName()),
+            'client_mime' => $image->getClientMimeType(),
+            'detected_extension' => $image->extension(),
+            'size_bytes' => $image->getSize(),
+            'upload_error' => $image->getError(),
+            'is_valid' => $image->isValid(),
+            'destination_root' => $root,
+            'destination_exists' => is_dir($root),
+            'writable_path_checked' => $writableTarget,
+            'destination_writable' => is_writable($writableTarget),
+            'php_upload_max_filesize' => ini_get('upload_max_filesize'),
+            'php_post_max_size' => ini_get('post_max_size'),
+            'php_max_file_uploads' => ini_get('max_file_uploads'),
+            'request_content_length' => request()->server('CONTENT_LENGTH'),
+        ];
+        $this->uploadLog('info', 'product_image.storage_started', $context);
+
         try {
             $disk = Storage::disk('product_images');
             $filename = Str::uuid().'.'.Str::lower($image->extension());
@@ -376,7 +436,21 @@ class ProductController extends Controller
             if (! is_string($storedPath) || $storedPath === '' || ! $disk->exists($storedPath)) {
                 throw new \RuntimeException('The uploaded product image could not be verified on disk.');
             }
+
+            $this->uploadLog('info', 'product_image.storage_succeeded', [
+                ...$context,
+                'stored_path' => $storedPath,
+                'absolute_path' => $disk->path($storedPath),
+                'stored_size_bytes' => $disk->size($storedPath),
+            ]);
         } catch (\Throwable $exception) {
+            $this->uploadLog('error', 'product_image.storage_failed', [
+                ...$context,
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+                'code' => $exception->getCode(),
+                'last_php_error' => error_get_last(),
+            ]);
             report($exception);
 
             throw ValidationException::withMessages([
@@ -385,5 +459,18 @@ class ProductController extends Controller
         }
 
         return '/product-images/'.basename($storedPath);
+    }
+
+    private function uploadLog(string $level, string $event, array $context = []): void
+    {
+        try {
+            Log::channel(config('logging.store_channel', 'store'))->log($level, $event, [
+                'request_id' => request()->attributes->get('store_request_id'),
+                'user_id' => request()->user()?->getAuthIdentifier(),
+                ...$context,
+            ]);
+        } catch (\Throwable $loggingException) {
+            report($loggingException);
+        }
     }
 }
