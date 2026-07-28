@@ -483,6 +483,7 @@ function Admin({ products, categories, brands }: { products: Product[]; categori
         event.preventDefault();
         post(route('admin.products.store'), {
             forceFormData: true,
+            preserveScroll: true,
             onSuccess: () => {
                 previews.forEach((preview) => URL.revokeObjectURL(preview));
                 setPreviews([]);
@@ -505,9 +506,14 @@ function Admin({ products, categories, brands }: { products: Product[]; categori
                 <section>
                     <h2>افزودن محصول</h2>
                     <form className="admin-form" onSubmit={submit}>
+                        {Object.keys(errors).length > 0 && (
+                            <div className="form-error-box">
+                                لطفاً خطاهای فرم را بررسی کنید. برای ثبت سریع، فقط نام محصول کافی است و SKU، قیمت و موجودی می‌توانند خالی بمانند.
+                            </div>
+                        )}
                         <input value={data.name} onChange={(event) => setData('name', event.target.value)} placeholder="نام محصول" />
                         {errors.name && <small className="form-error">{errors.name}</small>}
-                        <input value={data.sku} onChange={(event) => setData('sku', event.target.value)} placeholder="شناسه محصول / SKU" />
+                        <input value={data.sku} onChange={(event) => setData('sku', event.target.value)} placeholder="شناسه محصول / SKU اختیاری" />
                         {errors.sku && <small className="form-error">{errors.sku}</small>}
                         <div className="admin-two">
                             <select value={data.category_id} onChange={(event) => setData('category_id', event.target.value)}>
@@ -528,7 +534,7 @@ function Admin({ products, categories, brands }: { products: Product[]; categori
                             <input value={data.brand_name} onChange={(event) => setData('brand_name', event.target.value)} placeholder="نام برند جدید" />
                         </div>
                         <div className="admin-two">
-                            <input value={data.price} onChange={(event) => setData('price', event.target.value)} inputMode="numeric" placeholder="قیمت" />
+                            <input value={data.price} onChange={(event) => setData('price', event.target.value)} inputMode="numeric" placeholder="قیمت اختیاری" />
                             <input
                                 value={data.sale_price}
                                 onChange={(event) => setData('sale_price', event.target.value)}
@@ -536,7 +542,10 @@ function Admin({ products, categories, brands }: { products: Product[]; categori
                                 placeholder="قیمت تخفیفی"
                             />
                         </div>
-                        <input value={data.stock} onChange={(event) => setData('stock', event.target.value)} inputMode="numeric" placeholder="موجودی" />
+                        {errors.price && <small className="form-error">{errors.price}</small>}
+                        {errors.sale_price && <small className="form-error">{errors.sale_price}</small>}
+                        <input value={data.stock} onChange={(event) => setData('stock', event.target.value)} inputMode="numeric" placeholder="موجودی اختیاری" />
+                        {errors.stock && <small className="form-error">{errors.stock}</small>}
                         <textarea
                             value={data.short_description}
                             onChange={(event) => setData('short_description', event.target.value)}

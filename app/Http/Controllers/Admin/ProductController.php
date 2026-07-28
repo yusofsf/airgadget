@@ -17,14 +17,14 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'sku' => ['required', 'string', 'max:255', 'unique:products,sku'],
+            'sku' => ['nullable', 'string', 'max:255', 'unique:products,sku'],
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
             'brand_id' => ['nullable', 'integer', 'exists:brands,id'],
             'category_name' => ['nullable', 'string', 'max:255'],
             'brand_name' => ['nullable', 'string', 'max:255'],
-            'price' => ['required', 'numeric', 'min:0'],
-            'sale_price' => ['nullable', 'numeric', 'min:0', 'lt:price'],
-            'stock' => ['required', 'integer', 'min:0'],
+            'price' => ['nullable', 'numeric', 'min:0'],
+            'sale_price' => ['nullable', 'numeric', 'min:0'],
+            'stock' => ['nullable', 'integer', 'min:0'],
             'short_description' => ['nullable', 'string', 'max:1000'],
             'description' => ['nullable', 'string'],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
@@ -42,12 +42,12 @@ class ProductController extends Controller
                 'brand_id' => $brand?->id,
                 'name' => $validated['name'],
                 'slug' => $slug,
-                'sku' => $validated['sku'],
+                'sku' => $validated['sku'] ?: $this->uniqueSku($validated['name']),
                 'short_description' => $validated['short_description'] ?? null,
                 'description' => $validated['description'] ?? null,
-                'price' => $validated['price'],
+                'price' => $validated['price'] ?? 0,
                 'sale_price' => $validated['sale_price'] ?? null,
-                'stock' => $validated['stock'],
+                'stock' => $validated['stock'] ?? 0,
                 'is_active' => true,
             ]);
 
@@ -121,5 +121,20 @@ class ProductController extends Controller
         }
 
         return $slug;
+    }
+
+    private function uniqueSku(string $value): string
+    {
+        $prefix = strtoupper(Str::slug($value, ''));
+        $prefix = $prefix !== '' ? substr($prefix, 0, 10) : 'AG';
+        $sku = $prefix.'-'.now()->format('ymdHis');
+        $counter = 2;
+
+        while (Product::where('sku', $sku)->exists()) {
+            $sku = "{$prefix}-".now()->format('ymdHis')."-{$counter}";
+            $counter++;
+        }
+
+        return $sku;
     }
 }
