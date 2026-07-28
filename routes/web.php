@@ -3,6 +3,7 @@ use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ShippingController;
+use App\Http\Controllers\Admin\TaxonomyController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\AccountController;
@@ -15,7 +16,9 @@ Route::get('/categories/{category:slug}',[StoreController::class,'category'])->n
 Route::get('/products/{product:slug}',[StoreController::class,'product'])->name('products.show');
 Route::get('/product-images/{filename}',[ProductController::class,'image'])->where('filename','[A-Za-z0-9._-]+')->name('product-images.show');
 Route::get('/articles',[StoreController::class,'articles'])->name('articles.index');
-Route::get('/articles/tags/{tag:slug}',[StoreController::class,'tag'])->name('tags.show');
+Route::get('/tags/{tag:slug}',[StoreController::class,'tag'])->name('tags.show');
+Route::get('/articles/tags/{tag:slug}',[StoreController::class,'tag']);
+Route::get('/articles/categories/{articleCategory:slug}',[StoreController::class,'articleCategory'])->name('article-categories.show');
 Route::get('/articles/{article:slug}',[StoreController::class,'article'])->name('articles.show');
 Route::get('/sitemap.xml',SitemapController::class)->name('sitemap');
 Route::get('/about-us',[StoreController::class,'page'])->defaults('page','about')->name('about');
@@ -27,5 +30,29 @@ Route::get('/orders/{order}/invoice/{token}',[CheckoutController::class,'invoice
 Route::get('/orders/{order}/invoice/{token}/pdf',[CheckoutController::class,'invoicePdf'])->name('orders.invoice.pdf');
 Route::get('/payments/zarinpal/callback/{order}/{token}',[CheckoutController::class,'callback'])->name('payments.zarinpal.callback');
 Route::get('/track-order',OrderTrackingController::class)->middleware('throttle:20,1')->name('orders.track');
-Route::middleware('auth')->group(function(){Route::get('/account',[StoreController::class,'account'])->name('account');Route::patch('/account/profile',[AccountController::class,'update'])->name('account.profile.update');Route::middleware('can:manage-store')->group(function(){Route::get('/admin',[StoreController::class,'admin'])->name('admin');Route::post('/admin/products',[ProductController::class,'store'])->name('admin.products.store');Route::get('/admin/products/{product}',[ProductController::class,'show'])->name('admin.products.show');Route::patch('/admin/products/{product}',[ProductController::class,'update'])->name('admin.products.update');Route::delete('/admin/products/{product}',[ProductController::class,'destroy'])->name('admin.products.destroy');Route::post('/admin/articles',[ArticleController::class,'store'])->name('admin.articles.store');Route::patch('/admin/articles/{article}',[ArticleController::class,'update'])->name('admin.articles.update');Route::delete('/admin/articles/{article}',[ArticleController::class,'destroy'])->name('admin.articles.destroy');Route::put('/admin/shipping',[ShippingController::class,'update'])->name('admin.shipping.update');Route::get('/admin/orders',[OrderController::class,'index'])->name('admin.orders.index');Route::get('/admin/orders/{order}',[OrderController::class,'show'])->name('admin.orders.show');Route::patch('/admin/orders/{order}/status',[OrderController::class,'updateStatus'])->name('admin.orders.status');Route::get('/admin/orders/{order}/receipt',[OrderController::class,'receipt'])->name('admin.orders.receipt');});});
+Route::middleware('auth')->group(function () {
+    Route::get('/account', [StoreController::class, 'account'])->name('account');
+    Route::patch('/account/profile', [AccountController::class, 'update'])->name('account.profile.update');
+
+    Route::middleware('can:manage-store')->group(function () {
+        Route::get('/admin', [StoreController::class, 'admin'])->name('admin');
+        Route::post('/admin/products', [ProductController::class, 'store'])->name('admin.products.store');
+        Route::post('/admin/products/{product}/images', [ProductController::class, 'storeImage'])->name('admin.products.images.store');
+        Route::get('/admin/products/{product}', [ProductController::class, 'show'])->name('admin.products.show');
+        Route::patch('/admin/products/{product}', [ProductController::class, 'update'])->name('admin.products.update');
+        Route::delete('/admin/products/{product}', [ProductController::class, 'destroy'])->name('admin.products.destroy');
+        Route::post('/admin/articles', [ArticleController::class, 'store'])->name('admin.articles.store');
+        Route::patch('/admin/articles/{article}', [ArticleController::class, 'update'])->name('admin.articles.update');
+        Route::delete('/admin/articles/{article}', [ArticleController::class, 'destroy'])->name('admin.articles.destroy');
+        Route::patch('/admin/tags/{tag}', [TaxonomyController::class, 'updateTag'])->name('admin.tags.update');
+        Route::delete('/admin/tags/{tag}', [TaxonomyController::class, 'destroyTag'])->name('admin.tags.destroy');
+        Route::patch('/admin/article-categories/{articleCategory}', [TaxonomyController::class, 'updateArticleCategory'])->name('admin.article-categories.update');
+        Route::delete('/admin/article-categories/{articleCategory}', [TaxonomyController::class, 'destroyArticleCategory'])->name('admin.article-categories.destroy');
+        Route::put('/admin/shipping', [ShippingController::class, 'update'])->name('admin.shipping.update');
+        Route::get('/admin/orders', [OrderController::class, 'index'])->name('admin.orders.index');
+        Route::get('/admin/orders/{order}', [OrderController::class, 'show'])->name('admin.orders.show');
+        Route::patch('/admin/orders/{order}/status', [OrderController::class, 'updateStatus'])->name('admin.orders.status');
+        Route::get('/admin/orders/{order}/receipt', [OrderController::class, 'receipt'])->name('admin.orders.receipt');
+    });
+});
 require __DIR__.'/auth.php';

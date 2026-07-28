@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Article;
+use App\Models\ArticleCategory;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Tag;
@@ -28,7 +29,9 @@ test('dynamic sitemap contains public categories products articles and tags', fu
     ]);
 
     $tag = Tag::create(['name' => 'راهنمای خرید', 'slug' => 'buying-guide']);
+    $articleCategory = ArticleCategory::create(['name' => 'راهنمای خرید', 'slug' => 'buying-guides']);
     $publishedArticle = Article::create([
+        'article_category_id' => $articleCategory->id,
         'title' => 'مقاله منتشرشده',
         'slug' => 'published-article',
         'body' => 'متن مقاله',
@@ -36,6 +39,7 @@ test('dynamic sitemap contains public categories products articles and tags', fu
         'published_at' => now(),
     ]);
     $publishedArticle->tags()->attach($tag);
+    $activeProduct->tags()->attach($tag);
 
     $hiddenTag = Tag::create(['name' => 'مخفی', 'slug' => 'hidden-tag']);
     $draftArticle = Article::create([
@@ -54,6 +58,7 @@ test('dynamic sitemap contains public categories products articles and tags', fu
         ->and($content)->toContain(route('categories.show', $category))
         ->and($content)->toContain(route('products.show', $activeProduct))
         ->and($content)->toContain(route('articles.show', $publishedArticle))
+        ->and($content)->toContain(route('article-categories.show', $articleCategory))
         ->and($content)->toContain(route('tags.show', $tag))
         ->and($content)->not->toContain(route('products.show', $hiddenProduct))
         ->and($content)->not->toContain(route('articles.show', $draftArticle))
@@ -72,7 +77,9 @@ test('category and tag sitemap urls are real indexable pages', function () {
         'is_active' => true,
     ]);
     $tag = Tag::create(['name' => 'آموزش', 'slug' => 'tutorial']);
+    $articleCategory = ArticleCategory::create(['name' => 'آموزش', 'slug' => 'training']);
     $article = Article::create([
+        'article_category_id' => $articleCategory->id,
         'title' => 'مقاله آموزشی',
         'slug' => 'tutorial-article',
         'body' => 'متن مقاله',
@@ -80,6 +87,7 @@ test('category and tag sitemap urls are real indexable pages', function () {
         'published_at' => now(),
     ]);
     $article->tags()->attach($tag);
+    $product->tags()->attach($tag);
 
     $this->get(route('categories.show', $category))
         ->assertOk()
@@ -94,8 +102,18 @@ test('category and tag sitemap urls are real indexable pages', function () {
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('Storefront')
-            ->where('view', 'articles')
+            ->where('view', 'tag')
             ->where('selectedTag.slug', 'tutorial')
+            ->where('articles.0.id', $article->id)
+            ->where('products.0.id', $product->id)
+        );
+
+    $this->get(route('article-categories.show', $articleCategory))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('Storefront')
+            ->where('view', 'articles')
+            ->where('selectedArticleCategory.slug', 'training')
             ->where('articles.data.0.id', $article->id)
         );
 });

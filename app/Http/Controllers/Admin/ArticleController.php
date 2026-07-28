@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Article;
+use App\Models\ArticleCategory;
 use App\Models\Tag;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,13 +19,19 @@ class ArticleController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'excerpt' => ['nullable', 'string', 'max:1000'],
             'body' => ['required', 'string'],
+            'tags' => ['nullable', 'string', 'max:1000'],
+            'category_name' => ['nullable', 'string', 'max:150'],
+            'meta_title' => ['nullable', 'string', 'max:255'],
+            'meta_description' => ['nullable', 'string', 'max:500'],
             'is_published' => ['required', 'boolean'],
         ]);
 
+        $validated['article_category_id'] = $this->resolveCategory($validated['category_name'] ?? '')?->id;
         $validated['published_at'] = $validated['is_published']
             ? ($article->published_at ?: now())
             : null;
-        $article->update($validated);
+        $article->update(collect($validated)->except(['tags', 'category_name'])->all());
+        $article->tags()->sync($this->tagIds($validated['tags'] ?? ''));
 
         return back()->with('status', "مقاله «{$article->title}» ویرایش شد.");
     }
@@ -48,12 +55,14 @@ class ArticleController extends Controller
             'excerpt' => ['nullable', 'string', 'max:1000'],
             'body' => ['required', 'string'],
             'tags' => ['nullable', 'string', 'max:1000'],
+            'category_name' => ['nullable', 'string', 'max:150'],
             'meta_title' => ['nullable', 'string', 'max:255'],
             'meta_description' => ['nullable', 'string', 'max:500'],
             'main_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
         ]);
 
         $article = Article::create([
+            'article_category_id' => $this->resolveCategory($validated['category_name'] ?? '')?->id,
             'title' => $validated['title'],
             'slug' => $this->uniqueSlug($validated['title']),
             'excerpt' => $validated['excerpt'] ?? null,
@@ -76,7 +85,7 @@ class ArticleController extends Controller
 
     private function tagIds(string $tags): array
     {
-        return collect(explode(',', $tags))
+        return collect(preg_split('/[,،]/u', $tags))
             ->map(fn ($tag) => trim($tag))
             ->filter()
             ->unique()
@@ -88,6 +97,19 @@ class ArticleController extends Controller
             })
             ->values()
             ->all();
+    }
+
+    private function resolveCategory(string $name): ?ArticleCategory
+    {
+        $name = trim($name);
+        if ($name === '') {
+            return null;
+        }
+
+        return ArticleCategory::firstOrCreate(
+            ['name' => $name],
+            ['slug' => $this->uniqueCategorySlug($name)]
+        );
     }
 
     private function uniqueSlug(string $value): string
@@ -111,6 +133,20 @@ class ArticleController extends Controller
         $counter = 2;
 
         while (Tag::where('slug', $slug)->exists()) {
+            $slug = "{$base}-{$counter}";
+            $counter++;
+        }
+
+        return $slug;
+    }
+
+    private function uniqueCategorySlug(string $value): string
+    {
+        $base = Str::slug($value) ?: Str::random(8);
+        $slug = $base;
+        $counter = 2;
+
+        while (ArticleCategory::where('slug', $slug)->exists()) {
             $slug = "{$base}-{$counter}";
             $counter++;
         }

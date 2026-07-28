@@ -1,10 +1,12 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import axios from 'axios';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 type Brand = { id: number; name: string };
 type Category = { id: number; name: string; slug?: string; products_count?: number };
 type UploadedImage = { id?: number; path: string; sort_order?: number };
-type Tag = { id: number; name: string; slug: string };
+type Tag = { id: number; name: string; slug: string; products_count?: number; articles_count?: number };
+type ArticleCategory = { id: number; name: string; slug: string; description?: string | null; articles_count?: number };
 type Product = {
     id: number;
     name: string;
@@ -28,6 +30,7 @@ type Product = {
     attributes?: { color?: string };
     stock: number;
     is_active?: boolean;
+    tags?: Tag[];
 };
 type Article = {
     id: number;
@@ -44,6 +47,7 @@ type Article = {
     published_at?: string | null;
     is_published?: boolean;
     tags?: Tag[];
+    category?: ArticleCategory | null;
 };
 type ShippingMethod = { code: string; name: string; description: string; cost: number; is_active: boolean };
 type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; tax?: number; total: number; shipping_method: string; payment_method?: string; payment_receipt?: string; card_to_card_amount?: number; payment_reference?: string; paid_at?: string; created_at: string; updated_at?: string; items_count?: number; items_sum_quantity?: number; address?: { first_name?: string; last_name?: string; customer_name?: string; phone?: string; postal_code?: string; province?: string; city?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; price?: number; quantity: number }[]; user?: { first_name?: string; last_name?: string; phone_number?: string; email?: string } };
@@ -84,6 +88,7 @@ type AdminForm = {
     meta_title: string;
     meta_description: string;
     meta_keywords: string;
+    tags: string;
     main_image_index: number;
     images: File[];
 };
@@ -92,6 +97,7 @@ type ArticleForm = {
     excerpt: string;
     body: string;
     tags: string;
+    category_name: string;
     meta_title: string;
     meta_description: string;
     main_image: File | null;
@@ -117,6 +123,7 @@ type ProductEditForm = {
     remove_image_ids: number[];
     remove_legacy_paths: string[];
     main_image_choice: string;
+    tags: string;
 };
 
 const supportPhone = '09205850190';
@@ -130,6 +137,44 @@ const imageUrl = (path?: string | null) => {
     const normalized = path.replace(/^public\//, 'storage/').replace(/^storage\/app\/public\//, 'storage/');
     return `/${normalized}`;
 };
+const optimizeProductImage = async (file: File): Promise<File> => {
+    if (file.size <= 900 * 1024 || typeof createImageBitmap === 'undefined') return file;
+    try {
+        const bitmap = await createImageBitmap(file);
+        const maxDimension = 1400;
+        const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close();
+        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.76));
+        if (!blob) return file;
+        return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp', lastModified: Date.now() });
+    } catch {
+        return file;
+    }
+};
+const prepareProductImages = (files: File[]) => Promise.all(files.map(optimizeProductImage));
+const uploadProductImages = async (productId: number, files: File[], mainIndex: number, onProgress: (percentage: number) => void) => {
+    for (let index = 0; index < files.length; index++) {
+        const payload = new FormData();
+        payload.append('image', files[index]);
+        payload.append('is_main', index === mainIndex ? '1' : '0');
+        await axios.post(route('admin.products.images.store', productId), payload, {
+            onUploadProgress: (event) => {
+                const fileProgress = event.total ? event.loaded / event.total : 0;
+                onProgress(Math.round(((index + fileProgress) / files.length) * 100));
+            },
+        });
+    }
+};
+const uploadErrorMessage = (error: any) =>
+    error?.response?.data?.errors?.image?.[0]
+    || error?.response?.data?.errors?.images?.[0]
+    || error?.response?.data?.message
+    || error?.message
+    || 'آپلود تصویر انجام نشد. محدودیت حجم یا دسترسی نوشتن سرور را بررسی کنید.';
 const toCard = (p: Product): CardProduct => ({
     id: p.id,
     name: p.name,
@@ -165,6 +210,7 @@ export default function Storefront({
     article,
     topics = [],
     tags = [],
+    articleCategories = [],
     shippingMethods = [],
     accounting = {},
     orders = [],
@@ -178,6 +224,7 @@ export default function Storefront({
     cardToCard,
     selectedCategory,
     selectedTag,
+    selectedArticleCategory,
 }: any) {
     const [search, setSearch] = useState('');
     const [initialCart] = useState<StoredCart>(readStoredCart);
@@ -190,7 +237,7 @@ export default function Storefront({
     const productItems: Product[] = Array.isArray(products) ? products : products?.data || [];
     const list = productItems.map(toCard);
     const heroImage = '/images/airpods-pro.jpg';
-    const pageSeo = resolveSeo(view, product, article, selectedCategory, selectedTag);
+    const pageSeo = resolveSeo(view, product, article, selectedCategory, selectedTag, selectedArticleCategory);
     const displayed = useMemo(
         () =>
             list
@@ -351,13 +398,15 @@ export default function Storefront({
                 )}
 
                 {view === 'articles' ? (
-                    <Articles articles={Array.isArray(articles) ? articles : articles?.data || []} topics={topics} tags={tags} selectedTag={selectedTag} />
+                    <Articles articles={Array.isArray(articles) ? articles : articles?.data || []} articleCategories={articleCategories} tags={tags} selectedArticleCategory={selectedArticleCategory} />
+                ) : view === 'tag' ? (
+                    <TagLanding tag={selectedTag} products={productItems} articles={Array.isArray(articles) ? articles : []} add={addToCart} />
                 ) : view === 'article' ? (
                     <ArticleDetail article={article} />
                 ) : view === 'product' ? (
                     <ProductDetail product={product} add={addToCart} />
                 ) : view === 'admin' ? (
-                    <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} accounting={accounting} shippingMethods={shippingMethods} />
+                    <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} tags={tags} articleCategories={articleCategories} accounting={accounting} shippingMethods={shippingMethods} />
                 ) : view === 'admin-orders' ? (
                     <AdminOrders orders={orders} />
                 ) : view === 'admin-order' ? (
@@ -499,12 +548,12 @@ function ProductCard({ p, add, fav, toggle }: any) {
     );
 }
 
-function resolveSeo(view: string, product?: Product, article?: Article, selectedCategory?: Category, selectedTag?: Tag): SeoMeta {
+function resolveSeo(view: string, product?: Product, article?: Article, selectedCategory?: Category, selectedTag?: Tag, selectedArticleCategory?: ArticleCategory): SeoMeta {
     if (view === 'product' && product) {
         return {
             title: product.meta_title || `${product.name} | ایرگجت`,
             description: product.meta_description || product.short_description || `خرید ${product.name} از ایرگجت با پشتیبانی ${supportPhone}`,
-            keywords: product.meta_keywords || undefined,
+            keywords: product.meta_keywords || product.tags?.map((tag) => tag.name).join(', ') || undefined,
             image: imageUrl(product.main_image || product.images?.[0]?.path || product.gallery?.[0]),
             canonical: product.canonical_url || undefined,
         };
@@ -528,11 +577,19 @@ function resolveSeo(view: string, product?: Product, article?: Article, selected
         };
     }
 
-    if (view === 'articles' && selectedTag) {
+    if (view === 'tag' && selectedTag) {
         return {
-            title: `مقالات ${selectedTag.name} | مجله ایرگجت`,
-            description: `مطالب و راهنماهای مرتبط با ${selectedTag.name} در مجله ایرگجت`,
+            title: `${selectedTag.name} | محصولات و مقالات ایرگجت`,
+            description: `محصولات، راهنماها و مطالب مرتبط با ${selectedTag.name} در ایرگجت`,
             canonical: route('tags.show', selectedTag.slug),
+        };
+    }
+
+    if (view === 'articles' && selectedArticleCategory) {
+        return {
+            title: `${selectedArticleCategory.name} | مجله ایرگجت`,
+            description: selectedArticleCategory.description || `مقالات دسته‌بندی ${selectedArticleCategory.name} در مجله ایرگجت`,
+            canonical: route('article-categories.show', selectedArticleCategory.slug),
         };
     }
 
@@ -587,6 +644,7 @@ function ProductDetail({ product, add }: { product: Product; add: (product: Card
                 <section className="product-info">
                     <small>{product.category?.name || 'محصول'} · {product.brand?.name || 'ایرگجت'}</small>
                     <h1>{product.name}</h1>
+                    {product.tags && product.tags.length > 0 && <div className="article-tags">{product.tags.map((tag) => <Link href={route('tags.show', tag.slug)} key={tag.id}>#{tag.name}</Link>)}</div>}
                     <p>{product.short_description || product.description || 'این محصول با ضمانت اصالت کالا در ایرگجت عرضه می‌شود.'}</p>
                     <div className="product-price">
                         {product.sale_price && <del>{toman(Number(product.price))}</del>}
@@ -637,23 +695,23 @@ function CategoryCards({ counts }: { counts: Category[] }) {
     );
 }
 
-function Articles({ articles, topics, tags, selectedTag }: { articles: Article[]; topics: string[]; tags: Tag[]; selectedTag?: Tag }) {
+function Articles({ articles, articleCategories, tags, selectedArticleCategory }: { articles: Article[]; articleCategories: ArticleCategory[]; tags: Tag[]; selectedArticleCategory?: ArticleCategory }) {
     return (
         <main className="page">
             <em>راهنما و بررسی تخصصی</em>
-            <h1>{selectedTag ? `مقالات ${selectedTag.name}` : 'مجله ایرگجت'}</h1>
+            <h1>{selectedArticleCategory ? `مقالات ${selectedArticleCategory.name}` : 'مجله ایرگجت'}</h1>
             <div className="article-taxonomy">
-                {topics.map((topic) => <span key={topic}>{topic}</span>)}
-                {tags.map((tag) => <Link className={selectedTag?.id === tag.id ? 'active' : ''} href={route('tags.show', tag.slug)} key={tag.id}>#{tag.name}</Link>)}
+                {articleCategories.map((category) => <Link className={selectedArticleCategory?.id === category.id ? 'active' : ''} href={route('article-categories.show', category.slug)} key={category.id}>{category.name}</Link>)}
+                {tags.map((tag) => <Link href={route('tags.show', tag.slug)} key={tag.id}>#{tag.name}</Link>)}
             </div>
             <div className="article-grid">
                 {articles.length ? articles.map((article) => (
                     <article className="article" key={article.id}>
                         {article.image ? <img src={article.image} alt={article.title} loading="lazy" /> : <div className="article-image" />}
-                        <small>{article.topic || 'مجله ایرگجت'}</small>
+                        <small>{article.category?.name || 'مجله ایرگجت'}</small>
                         <h2>{article.title}</h2>
                         <p>{article.excerpt || 'نکات کاربردی و اطلاعات دقیق برای انتخاب بهتر لوازم جانبی.'}</p>
-                        <div className="article-tags">{article.tags?.map((tag) => <span key={tag.id}>#{tag.name}</span>)}</div>
+                        <div className="article-tags">{article.tags?.map((tag) => <Link href={route('tags.show', tag.slug)} key={tag.id}>#{tag.name}</Link>)}</div>
                         <Link href={`/articles/${article.slug}`}>ادامه مطلب ←</Link>
                     </article>
                 )) : (
@@ -667,6 +725,31 @@ function Articles({ articles, topics, tags, selectedTag }: { articles: Article[]
     );
 }
 
+function TagLanding({ tag, products, articles, add }: { tag: Tag; products: Product[]; articles: Article[]; add: (product: CardProduct) => void }) {
+    return (
+        <main className="page tag-landing">
+            <em>برچسب</em>
+            <h1>#{tag.name}</h1>
+            <h2>محصولات مرتبط</h2>
+            <div className="grid">
+                {products.length ? products.map((product) => <ProductCard key={product.id} p={toCard(product)} add={add} fav={false} toggle={() => undefined} />) : <p>محصولی با این تگ ثبت نشده است.</p>}
+            </div>
+            <h2>مقالات مرتبط</h2>
+            <div className="article-grid">
+                {articles.length ? articles.map((article) => (
+                    <article className="article" key={article.id}>
+                        {article.image ? <img src={article.image} alt={article.title} loading="lazy" /> : <div className="article-image" />}
+                        <small>{article.category?.name || 'مجله ایرگجت'}</small>
+                        <h3>{article.title}</h3>
+                        <p>{article.excerpt}</p>
+                        <Link href={route('articles.show', article.slug)}>ادامه مطلب ←</Link>
+                    </article>
+                )) : <p>مقاله‌ای با این تگ ثبت نشده است.</p>}
+            </div>
+        </main>
+    );
+}
+
 function ArticleDetail({ article }: { article: Article }) {
     if (!article) {
         return <main className="page"><h1>مقاله پیدا نشد</h1></main>;
@@ -674,13 +757,13 @@ function ArticleDetail({ article }: { article: Article }) {
 
     return (
         <main className="page article-detail">
-            <em>{article.topic || 'مجله ایرگجت'}</em>
+            <em>{article.category ? <Link href={route('article-categories.show', article.category.slug)}>{article.category.name}</Link> : 'مجله ایرگجت'}</em>
             <h1>{article.title}</h1>
             {article.image && <img src={article.image} alt={article.title} />}
             {article.excerpt && <p className="lead">{article.excerpt}</p>}
             <article>{article.body}</article>
             {article.tags && article.tags.length > 0 && (
-                <div className="article-tags">{article.tags.map((tag) => <span key={tag.id}>#{tag.name}</span>)}</div>
+                <div className="article-tags">{article.tags.map((tag) => <Link href={route('tags.show', tag.slug)} key={tag.id}>#{tag.name}</Link>)}</div>
             )}
         </main>
     );
@@ -960,6 +1043,8 @@ function Admin({
     articles,
     categories,
     brands,
+    tags,
+    articleCategories,
     accounting,
     shippingMethods,
 }: {
@@ -967,14 +1052,19 @@ function Admin({
     articles: Article[];
     categories: Category[];
     brands: Brand[];
+    tags: Tag[];
+    articleCategories: ArticleCategory[];
     accounting: Accounting;
     shippingMethods: ShippingMethod[];
 }) {
     const { props } = usePage<any>();
     const [previews, setPreviews] = useState<string[]>([]);
+    const [productUploadProgress, setProductUploadProgress] = useState(0);
+    const [productUploadError, setProductUploadError] = useState('');
+    const [preparingProductImages, setPreparingProductImages] = useState(false);
     const [articlePreview, setArticlePreview] = useState<string | null>(null);
     const [tab, setTab] = useState<'accounting' | 'products' | 'articles' | 'shipping'>('accounting');
-    const { data, setData, post, processing, errors, reset } = useForm<AdminForm>({
+    const { data, setData, post, processing, errors, reset, transform } = useForm<AdminForm>({
         name: '',
         sku: '',
         category_id: '',
@@ -989,6 +1079,7 @@ function Admin({
         meta_title: '',
         meta_description: '',
         meta_keywords: '',
+        tags: '',
         main_image_index: 0,
         images: [],
     });
@@ -997,19 +1088,37 @@ function Admin({
         excerpt: '',
         body: '',
         tags: '',
+        category_name: '',
         meta_title: '',
         meta_description: '',
         main_image: null,
     });
     const submit = (event: FormEvent) => {
         event.preventDefault();
+        const files = [...data.images];
+        const mainImageIndex = data.main_image_index;
+        setProductUploadError('');
+        setProductUploadProgress(0);
+        transform((values) => ({ ...values, images: [] }));
         post(route('admin.products.store'), {
             forceFormData: true,
             preserveScroll: true,
-            onSuccess: () => {
-                previews.forEach((preview) => URL.revokeObjectURL(preview));
-                setPreviews([]);
-                reset();
+            onSuccess: async (page) => {
+                const productId = Number((page.props as any).flash?.createdProductId || 0);
+                try {
+                    if (files.length && !productId) {
+                        throw new Error('شناسه محصول برای آپلود تصاویر دریافت نشد.');
+                    }
+                    if (files.length) {
+                        await uploadProductImages(productId, files, mainImageIndex, setProductUploadProgress);
+                    }
+                    previews.forEach((preview) => URL.revokeObjectURL(preview));
+                    setPreviews([]);
+                    reset();
+                    router.reload({ only: ['products'] });
+                } catch (error) {
+                    setProductUploadError(uploadErrorMessage(error));
+                }
             },
         });
     };
@@ -1102,6 +1211,7 @@ function Admin({
                             placeholder="توضیحات متا محصول"
                         />
                         <input value={data.meta_keywords} onChange={(event) => setData('meta_keywords', event.target.value)} placeholder="کلمات کلیدی محصول، جداشده با ویرگول" />
+                        <input value={data.tags} onChange={(event) => setData('tags', event.target.value)} placeholder="تگ‌های محصول با ویرگول، مثل انکر، هندزفری" />
                         <label className="upload-box">
                             <span>انتخاب و آپلود عکس محصول</span>
                             <small>می‌توانید چند عکس انتخاب کنید؛ بعد یکی را به عنوان عکس اصلی بزنید.</small>
@@ -1109,16 +1219,27 @@ function Admin({
                                 type="file"
                                 accept="image/png,image/jpeg,image/webp"
                                 multiple
-                                onChange={(event) => {
+                                onChange={async (event) => {
                                     previews.forEach((preview) => URL.revokeObjectURL(preview));
-                                    const files = Array.from(event.target.files || []);
-                                    setData('images', files);
-                                    setData('main_image_index', 0);
-                                    setPreviews(files.map((file) => URL.createObjectURL(file)));
+                                    setPreparingProductImages(true);
+                                    setProductUploadError('');
+                                    try {
+                                        const files = await prepareProductImages(Array.from(event.target.files || []));
+                                        setData('images', files);
+                                        setData('main_image_index', 0);
+                                        setPreviews(files.map((file) => URL.createObjectURL(file)));
+                                    } catch (error) {
+                                        setProductUploadError(uploadErrorMessage(error));
+                                    } finally {
+                                        setPreparingProductImages(false);
+                                    }
                                 }}
                             />
                         </label>
                         {errors.images && <small className="form-error">{errors.images}</small>}
+                        {preparingProductImages && <small className="upload-preparing">در حال کم‌حجم‌سازی تصاویر...</small>}
+                        {productUploadError && <small className="form-error upload-error">{productUploadError}</small>}
+                        {productUploadProgress > 0 && <div className="upload-progress"><span style={{ width: `${productUploadProgress}%` }} /><b>{new Intl.NumberFormat('fa-IR').format(productUploadProgress)}٪ آپلود شد</b></div>}
                         {previews.length > 0 && (
                             <div className="image-picker">
                                 {previews.map((preview, index) => (
@@ -1135,8 +1256,8 @@ function Admin({
                                 ))}
                             </div>
                         )}
-                        <button className="primary" disabled={processing}>
-                            {processing ? 'در حال ثبت...' : 'ثبت محصول'}
+                        <button className="primary" disabled={processing || preparingProductImages}>
+                            {processing || productUploadProgress > 0 && productUploadProgress < 100 ? 'در حال ثبت و آپلود...' : 'ثبت محصول'}
                         </button>
                     </form>
                 </section>
@@ -1146,6 +1267,8 @@ function Admin({
                         {Object.keys(articleForm.errors).length > 0 && <div className="form-error-box">لطفاً خطاهای مقاله را بررسی کنید.</div>}
                         <input value={articleForm.data.title} onChange={(event) => articleForm.setData('title', event.target.value)} placeholder="عنوان مقاله" />
                         {articleForm.errors.title && <small className="form-error">{articleForm.errors.title}</small>}
+                        <input list="article-category-list" value={articleForm.data.category_name} onChange={(event) => articleForm.setData('category_name', event.target.value)} placeholder="دسته‌بندی مقاله" />
+                        <datalist id="article-category-list">{articleCategories.map((category) => <option value={category.name} key={category.id} />)}</datalist>
                         <input value={articleForm.data.tags} onChange={(event) => articleForm.setData('tags', event.target.value)} placeholder="تگ‌ها با ویرگول، مثل ایرپاد، شارژر" />
                         <textarea value={articleForm.data.excerpt} onChange={(event) => articleForm.setData('excerpt', event.target.value)} placeholder="خلاصه مقاله" />
                         <textarea value={articleForm.data.body} onChange={(event) => articleForm.setData('body', event.target.value)} placeholder="متن کامل مقاله" />
@@ -1183,6 +1306,7 @@ function Admin({
                 <section className={tab === 'articles' ? '' : 'admin-hidden'}>
                     <h2>مدیریت همه مقالات</h2>
                     <AdminArticles articles={articles} />
+                    <TaxonomyManagement tags={tags} articleCategories={articleCategories} />
                 </section>
             </div>
             {tab === 'accounting' && <AccountingPanel accounting={accounting} />}
@@ -1236,6 +1360,9 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
         .map((path, index) => ({ path, url: imageUrl(path) || path, index }));
     const initialLegacyImage = legacyImages.find((image) => image.path === product.main_image) || legacyImages[0];
     const [previews, setPreviews] = useState<string[]>([]);
+    const [imageUploadProgress, setImageUploadProgress] = useState(0);
+    const [imageUploadError, setImageUploadError] = useState('');
+    const [preparingImages, setPreparingImages] = useState(false);
     const form = useForm<ProductEditForm>({
         _method: 'patch',
         name: product.name || '',
@@ -1257,6 +1384,7 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
         remove_image_ids: [],
         remove_legacy_paths: [],
         main_image_choice: initialMainImage?.id ? `existing:${initialMainImage.id}` : initialLegacyImage ? `legacy:${initialLegacyImage.index}` : '',
+        tags: product.tags?.map((tag) => tag.name).join('، ') || '',
     });
 
     useEffect(() => () => previews.forEach((preview) => URL.revokeObjectURL(preview)), [previews]);
@@ -1290,15 +1418,34 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
+        const files = [...form.data.images];
+        const selectedNewImage = form.data.main_image_choice.startsWith('new:')
+            ? Number(form.data.main_image_choice.replace('new:', ''))
+            : -1;
+        setImageUploadError('');
+        setImageUploadProgress(0);
+        form.transform((values) => ({
+            ...values,
+            images: [],
+            main_image_choice: values.main_image_choice.startsWith('new:') ? '' : values.main_image_choice,
+        }));
         form.post(route('admin.products.update', product.id), {
             forceFormData: true,
             preserveScroll: true,
-            onSuccess: () => {
-                previews.forEach((preview) => URL.revokeObjectURL(preview));
-                setPreviews([]);
-                form.setData('images', []);
-                form.setData('remove_image_ids', []);
-                form.setData('remove_legacy_paths', []);
+            onSuccess: async () => {
+                try {
+                    if (files.length) {
+                        await uploadProductImages(product.id, files, selectedNewImage, setImageUploadProgress);
+                    }
+                    previews.forEach((preview) => URL.revokeObjectURL(preview));
+                    setPreviews([]);
+                    form.setData('images', []);
+                    form.setData('remove_image_ids', []);
+                    form.setData('remove_legacy_paths', []);
+                    router.reload();
+                } catch (error) {
+                    setImageUploadError(uploadErrorMessage(error));
+                }
             },
         });
     };
@@ -1333,6 +1480,7 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                         <label className="admin-check editor-active"><input type="checkbox" checked={form.data.is_active} onChange={(event) => form.setData('is_active', event.target.checked)} /> نمایش محصول در فروشگاه</label>
                         <label className="wide"><span>توضیح کوتاه</span><textarea value={form.data.short_description} onChange={(event) => form.setData('short_description', event.target.value)} /></label>
                         <label className="wide"><span>توضیحات کامل</span><textarea value={form.data.description} onChange={(event) => form.setData('description', event.target.value)} /></label>
+                        <label className="wide"><span>تگ‌های محصول</span><input value={form.data.tags} onChange={(event) => form.setData('tags', event.target.value)} placeholder="با ویرگول جدا کنید" /></label>
                     </div>
                 </section>
 
@@ -1356,29 +1504,39 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                     <label className="upload-box">
                         <span>افزودن تصاویر جدید</span>
                         <small>فرمت JPG، PNG یا WebP و حداکثر حجم هر فایل ۱۰ مگابایت</small>
-                        <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={(event) => {
+                        <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={async (event) => {
                             previews.forEach((preview) => URL.revokeObjectURL(preview));
-                            const files = Array.from(event.target.files || []);
-                            form.clearErrors('images');
-                            if (files.some((file) => file.size > 10 * 1024 * 1024)) {
-                                form.setError('images', 'حجم هر تصویر باید کمتر از ۱۰ مگابایت باشد.');
-                                event.target.value = '';
-                                form.setData('images', []);
-                                setPreviews([]);
-                                return;
+                            setPreparingImages(true);
+                            setImageUploadError('');
+                            try {
+                                const files = await prepareProductImages(Array.from(event.target.files || []));
+                                form.clearErrors('images');
+                                if (files.some((file) => file.size > 10 * 1024 * 1024)) {
+                                    form.setError('images', 'حجم هر تصویر باید کمتر از ۱۰ مگابایت باشد.');
+                                    event.target.value = '';
+                                    form.setData('images', []);
+                                    setPreviews([]);
+                                    return;
+                                }
+                                const nextPreviews = files.map((file) => URL.createObjectURL(file));
+                                form.setData('images', files);
+                                setPreviews(nextPreviews);
+                                if (!form.data.main_image_choice && files.length) form.setData('main_image_choice', 'new:0');
+                            } catch (error) {
+                                setImageUploadError(uploadErrorMessage(error));
+                            } finally {
+                                setPreparingImages(false);
                             }
-                            const nextPreviews = files.map((file) => URL.createObjectURL(file));
-                            form.setData('images', files);
-                            setPreviews(nextPreviews);
-                            if (!form.data.main_image_choice && files.length) form.setData('main_image_choice', 'new:0');
                         }} />
                     </label>
                     {form.errors.images && <small className="form-error upload-error">{form.errors.images}</small>}
+                    {preparingImages && <small className="upload-preparing">در حال کم‌حجم‌سازی تصاویر...</small>}
+                    {imageUploadError && <small className="form-error upload-error">{imageUploadError}</small>}
                     {form.data.images.length > 0 && <div className="selected-upload-summary">
                         <span>{new Intl.NumberFormat('fa-IR').format(form.data.images.length)} تصویر آماده آپلود است.</span>
                         <b>{form.data.images.map((file) => file.name).join('، ')}</b>
                     </div>}
-                    {form.progress && <div className="upload-progress"><span style={{ width: `${form.progress.percentage || 0}%` }} /><b>{new Intl.NumberFormat('fa-IR').format(form.progress.percentage || 0)}٪ آپلود شد</b></div>}
+                    {imageUploadProgress > 0 && <div className="upload-progress"><span style={{ width: `${imageUploadProgress}%` }} /><b>{new Intl.NumberFormat('fa-IR').format(imageUploadProgress)}٪ آپلود شد</b></div>}
                     {previews.length > 0 && <div className="editor-image-grid new-images">{previews.map((preview, index) => (
                         <div key={preview}>
                             <img src={preview} alt={`تصویر جدید ${index + 1}`} />
@@ -1397,7 +1555,7 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                 </section>
 
                 <div className="product-editor-actions">
-                    <button className="primary" disabled={form.processing}>{form.processing ? 'در حال ذخیره...' : 'ذخیره تمام تغییرات'}</button>
+                    <button className="primary" disabled={form.processing || preparingImages}>{form.processing || imageUploadProgress > 0 && imageUploadProgress < 100 ? 'در حال ذخیره و آپلود...' : 'ذخیره تمام تغییرات'}</button>
                     <button type="button" className="danger-button" onClick={() => { if (window.confirm(`محصول «${product.name}» حذف شود؟`)) router.delete(route('admin.products.destroy', product.id)); }}>حذف محصول</button>
                 </div>
             </form>
@@ -1414,7 +1572,16 @@ function AdminArticles({ articles }: { articles: Article[] }) {
 }
 
 function ArticleManager({ article }: { article: Article }) {
-    const form = useForm({ title: article.title, excerpt: article.excerpt || '', body: article.body || '', is_published: article.is_published !== false });
+    const form = useForm({
+        title: article.title,
+        category_name: article.category?.name || '',
+        tags: article.tags?.map((tag) => tag.name).join('، ') || '',
+        excerpt: article.excerpt || '',
+        body: article.body || '',
+        meta_title: article.meta_title || '',
+        meta_description: article.meta_description || '',
+        is_published: article.is_published !== false,
+    });
 
     return (
         <form className="manage-row" onSubmit={(event) => { event.preventDefault(); form.patch(route('admin.articles.update', article.id), { preserveScroll: true }); }}>
@@ -1423,14 +1590,53 @@ function ArticleManager({ article }: { article: Article }) {
                 <span><b>{article.title}</b><small>{article.tags?.map((tag) => `#${tag.name}`).join(' ') || 'بدون تگ'}</small></span>
             </div>
             <input value={form.data.title} onChange={(event) => form.setData('title', event.target.value)} placeholder="عنوان" />
+            <input value={form.data.category_name} onChange={(event) => form.setData('category_name', event.target.value)} placeholder="دسته‌بندی مقاله" />
+            <input value={form.data.tags} onChange={(event) => form.setData('tags', event.target.value)} placeholder="تگ‌ها با ویرگول" />
             <textarea value={form.data.excerpt} onChange={(event) => form.setData('excerpt', event.target.value)} placeholder="خلاصه" />
             <textarea value={form.data.body} onChange={(event) => form.setData('body', event.target.value)} placeholder="متن مقاله" />
+            <input value={form.data.meta_title} onChange={(event) => form.setData('meta_title', event.target.value)} placeholder="عنوان سئو" />
+            <textarea value={form.data.meta_description} onChange={(event) => form.setData('meta_description', event.target.value)} placeholder="توضیحات متا" />
             <label className="admin-check"><input type="checkbox" checked={form.data.is_published} onChange={(event) => form.setData('is_published', event.target.checked)} /> مقاله منتشر باشد</label>
             {Object.keys(form.errors).length > 0 && <small className="form-error">عنوان و متن مقاله را بررسی کنید.</small>}
             <div className="manage-actions">
                 <button className="primary" disabled={form.processing}>ذخیره تغییرات</button>
                 <button type="button" className="danger-button" onClick={() => { if (window.confirm(`مقاله «${article.title}» حذف شود؟`)) router.delete(route('admin.articles.destroy', article.id), { preserveScroll: true }); }}>حذف مقاله</button>
             </div>
+        </form>
+    );
+}
+
+function TaxonomyManagement({ tags, articleCategories }: { tags: Tag[]; articleCategories: ArticleCategory[] }) {
+    return (
+        <section className="taxonomy-management">
+            <h2>مدیریت تگ‌ها</h2>
+            <div className="taxonomy-list">
+                {tags.length ? tags.map((tag) => <TaxonomyRow key={tag.id} item={tag} type="tag" />) : <p>هنوز تگی ثبت نشده است.</p>}
+            </div>
+            <h2>مدیریت دسته‌بندی مقالات</h2>
+            <div className="taxonomy-list">
+                {articleCategories.length ? articleCategories.map((category) => <TaxonomyRow key={category.id} item={category} type="category" />) : <p>هنوز دسته‌بندی مقاله‌ای ثبت نشده است.</p>}
+            </div>
+        </section>
+    );
+}
+
+function TaxonomyRow({ item, type }: { item: Tag | ArticleCategory; type: 'tag' | 'category' }) {
+    const form = useForm({ name: item.name, description: 'description' in item ? item.description || '' : '' });
+    const updateRoute = type === 'tag' ? route('admin.tags.update', item.id) : route('admin.article-categories.update', item.id);
+    const destroyRoute = type === 'tag' ? route('admin.tags.destroy', item.id) : route('admin.article-categories.destroy', item.id);
+    const count = type === 'tag'
+        ? Number((item as Tag).products_count || 0) + Number((item as Tag).articles_count || 0)
+        : Number((item as ArticleCategory).articles_count || 0);
+
+    return (
+        <form className="taxonomy-row" onSubmit={(event) => { event.preventDefault(); form.patch(updateRoute, { preserveScroll: true }); }}>
+            <input value={form.data.name} onChange={(event) => form.setData('name', event.target.value)} aria-label="نام" />
+            {type === 'category' && <input value={form.data.description} onChange={(event) => form.setData('description', event.target.value)} placeholder="توضیحات دسته‌بندی" />}
+            <small>{new Intl.NumberFormat('fa-IR').format(count)} مورد مرتبط</small>
+            <button className="primary" disabled={form.processing}>ویرایش</button>
+            <button type="button" className="danger-button" onClick={() => { if (window.confirm(`«${item.name}» حذف شود؟`)) router.delete(destroyRoute, { preserveScroll: true }); }}>حذف</button>
+            {form.errors.name && <span className="form-error">{form.errors.name}</span>}
         </form>
     );
 }

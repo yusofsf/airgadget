@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\Tag;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +22,37 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ProductController extends Controller
 {
+    public function storeImage(Request $request, Product $product): JsonResponse
+    {
+        $validated = $request->validate([
+            'image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'is_main' => ['nullable', 'boolean'],
+        ]);
+
+        $path = $this->storeProductImage($request->file('image'));
+        $image = $product->images()->create([
+            'path' => $path,
+            'sort_order' => ((int) $product->images()->max('sort_order')) + 1,
+        ]);
+        $gallery = collect($product->gallery ?? [])
+            ->concat($product->images()->orderBy('sort_order')->pluck('path'))
+            ->unique()
+            ->values();
+
+        $product->update([
+            'main_image' => ($validated['is_main'] ?? false) || ! $product->main_image
+                ? $path
+                : $product->main_image,
+            'gallery' => $gallery->all(),
+        ]);
+
+        return response()->json([
+            'id' => $image->id,
+            'path' => $image->path,
+            'main_image' => $product->main_image,
+        ], 201);
+    }
+
     public function image(string $filename): BinaryFileResponse
     {
         abort_unless((bool) preg_match('/\A[a-zA-Z0-9._-]+\z/', $filename), 404);
@@ -39,6 +72,7 @@ class ProductController extends Controller
             'adminProduct' => $product->load([
                 'brand',
                 'category',
+                'tags',
                 'images' => fn ($query) => $query->orderBy('sort_order'),
             ]),
             'categories' => Category::orderBy('name')->get(['id', 'name']),
@@ -61,6 +95,7 @@ class ProductController extends Controller
             'meta_title' => ['nullable', 'string', 'max:255'],
             'meta_description' => ['nullable', 'string', 'max:500'],
             'meta_keywords' => ['nullable', 'string', 'max:500'],
+            'tags' => ['nullable', 'string', 'max:1000'],
             'weight' => ['nullable', 'numeric', 'min:0'],
             'dimensions' => ['nullable', 'string', 'max:255'],
             'is_active' => ['required', 'boolean'],
@@ -87,6 +122,7 @@ class ProductController extends Controller
                 'short_description', 'description', 'meta_title', 'meta_description',
                 'meta_keywords', 'weight', 'dimensions', 'is_active',
             ])->all());
+            $product->tags()->sync($this->tagIds($validated['tags'] ?? ''));
 
             $removedImages = $product->images()
                 ->whereIn('id', $validated['remove_image_ids'] ?? [])
@@ -170,6 +206,7 @@ class ProductController extends Controller
             'meta_title' => ['nullable', 'string', 'max:255'],
             'meta_description' => ['nullable', 'string', 'max:500'],
             'meta_keywords' => ['nullable', 'string', 'max:500'],
+            'tags' => ['nullable', 'string', 'max:1000'],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
             'images' => ['nullable', 'array', 'max:8'],
             'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
@@ -185,7 +222,7 @@ class ProductController extends Controller
                 'brand_id' => $brand?->id,
                 'name' => $validated['name'],
                 'slug' => $slug,
-                'sku' => $validated['sku'] ?: $this->uniqueSku($validated['name']),
+                'sku' => ($validated['sku'] ?? null) ?: $this->uniqueSku($validated['name']),
                 'short_description' => $validated['short_description'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'meta_title' => $validated['meta_title'] ?? $validated['name'],
@@ -196,6 +233,7 @@ class ProductController extends Controller
                 'stock' => $validated['stock'] ?? 0,
                 'is_active' => true,
             ]);
+            $product->tags()->sync($this->tagIds($validated['tags'] ?? ''));
 
             $paths = [];
             foreach ($request->file('images', []) as $index => $image) {
@@ -221,7 +259,8 @@ class ProductController extends Controller
 
         return redirect()
             ->route('admin')
-            ->with('status', "محصول «{$product->name}» با موفقیت ثبت شد.");
+            ->with('status', "محصول «{$product->name}» با موفقیت ثبت شد.")
+            ->with('created_product_id', $product->id);
     }
 
     private function resolveCategory(array $data): Category
@@ -253,6 +292,20 @@ class ProductController extends Controller
             ['name' => $name],
             ['slug' => $this->uniqueSlug(Brand::class, $name)]
         );
+    }
+
+    private function tagIds(string $tags): array
+    {
+        return collect(preg_split('/[,،]/u', $tags))
+            ->map(fn ($tag) => trim($tag))
+            ->filter()
+            ->unique()
+            ->map(fn ($name) => Tag::firstOrCreate(
+                ['name' => $name],
+                ['slug' => $this->uniqueSlug(Tag::class, $name)]
+            )->id)
+            ->values()
+            ->all();
     }
 
     private function uniqueSlug(string $model, string $value): string

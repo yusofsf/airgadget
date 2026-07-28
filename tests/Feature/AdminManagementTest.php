@@ -1,9 +1,11 @@
 <?php
 
 use App\Models\Article;
+use App\Models\ArticleCategory;
 use App\Models\Category;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -88,6 +90,57 @@ test('article can be created without a topic or meta keywords', function () {
         ->and($article->meta_keywords)->toBeNull();
 });
 
+test('product and article taxonomies are stored and can be edited or deleted', function () {
+    $admin = User::factory()->create(['is_admin' => true]);
+
+    $this->actingAs($admin)
+        ->post(route('admin.products.store'), [
+            'name' => 'هندزفری تگ‌دار',
+            'category_name' => 'صوتی',
+            'price' => 900000,
+            'tags' => 'انکر، هندزفری',
+        ])
+        ->assertSessionHasNoErrors();
+
+    $product = Product::where('name', 'هندزفری تگ‌دار')->firstOrFail()->load('tags');
+    expect($product->tags->pluck('name')->all())->toEqualCanonicalizing(['انکر', 'هندزفری']);
+
+    $this->actingAs($admin)
+        ->post(route('admin.articles.store'), [
+            'title' => 'راهنمای هندزفری',
+            'body' => 'متن کامل راهنما',
+            'category_name' => 'راهنمای خرید',
+            'tags' => 'هندزفری، آموزش',
+        ])
+        ->assertSessionHasNoErrors();
+
+    $article = Article::where('title', 'راهنمای هندزفری')->firstOrFail()->load(['tags', 'category']);
+    expect($article->category?->name)->toBe('راهنمای خرید')
+        ->and($article->tags->pluck('name')->all())->toEqualCanonicalizing(['هندزفری', 'آموزش']);
+
+    $tag = Tag::where('name', 'آموزش')->firstOrFail();
+    $this->actingAs($admin)
+        ->patch(route('admin.tags.update', $tag), ['name' => 'آموزش تخصصی'])
+        ->assertSessionHasNoErrors();
+    expect($tag->refresh()->name)->toBe('آموزش تخصصی');
+
+    $category = ArticleCategory::where('name', 'راهنمای خرید')->firstOrFail();
+    $this->actingAs($admin)
+        ->patch(route('admin.article-categories.update', $category), [
+            'name' => 'راهنمای انتخاب',
+            'description' => 'راهنمای انتخاب محصولات',
+        ])
+        ->assertSessionHasNoErrors();
+    expect($category->refresh()->name)->toBe('راهنمای انتخاب');
+
+    $this->actingAs($admin)->delete(route('admin.tags.destroy', $tag))->assertSessionHasNoErrors();
+    $this->actingAs($admin)->delete(route('admin.article-categories.destroy', $category))->assertSessionHasNoErrors();
+
+    $this->assertDatabaseMissing('tags', ['id' => $tag->id]);
+    $this->assertDatabaseMissing('article_categories', ['id' => $category->id]);
+    expect($article->refresh()->article_category_id)->toBeNull();
+});
+
 test('a product cannot be created without its main price', function () {
     $admin = User::factory()->create(['is_admin' => true]);
 
@@ -125,6 +178,21 @@ test('admin can open the complete product editor and upload a visible main image
         );
 
     $this->actingAs($admin)
+        ->post(route('admin.products.images.store', $product), [
+            'image' => UploadedFile::fake()->image('separate-upload.jpg', 600, 600),
+            'is_main' => true,
+        ])
+        ->assertCreated()
+        ->assertJsonPath('main_image', fn (string $path) => str_starts_with($path, '/product-images/'));
+
+    $product->refresh()->load('images');
+    expect($product->images)->toHaveCount(1)
+        ->and($product->main_image)->toStartWith('/product-images/');
+
+    $separateUploadPath = 'products/'.basename($product->main_image);
+    Storage::disk('public')->assertExists($separateUploadPath);
+
+    $this->actingAs($admin)
         ->post(route('admin.products.update', $product), [
             '_method' => 'patch',
             'name' => 'محصول ویرایش‌شده',
@@ -141,7 +209,7 @@ test('admin can open the complete product editor and upload a visible main image
     $product->refresh();
     expect($product->name)->toBe('محصول ویرایش‌شده')
         ->and($product->main_image)->toStartWith('/product-images/')
-        ->and($product->images)->toHaveCount(1);
+        ->and($product->images)->toHaveCount(2);
 
     $storedPath = 'products/'.basename($product->main_image);
     Storage::disk('public')->assertExists($storedPath);
@@ -149,7 +217,7 @@ test('admin can open the complete product editor and upload a visible main image
         ->assertOk()
         ->assertHeader('cache-control', 'immutable, max-age=31536000, public');
 
-    $oldImageId = $product->images->first()->id;
+    $oldImageIds = $product->images->pluck('id')->all();
     $this->actingAs($admin)
         ->post(route('admin.products.update', $product), [
             '_method' => 'patch',
@@ -159,7 +227,7 @@ test('admin can open the complete product editor and upload a visible main image
             'price' => 650000,
             'stock' => 5,
             'is_active' => true,
-            'remove_image_ids' => [$oldImageId],
+            'remove_image_ids' => $oldImageIds,
             'main_image_choice' => 'new:0',
             'images' => [UploadedFile::fake()->image('replacement.webp', 800, 800)],
         ])
@@ -169,6 +237,7 @@ test('admin can open the complete product editor and upload a visible main image
     $replacementPath = 'products/'.basename($product->main_image);
     expect($product->images)->toHaveCount(1)
         ->and($product->main_image)->not->toBe('/product-images/'.basename($storedPath));
+    Storage::disk('public')->assertMissing($separateUploadPath);
     Storage::disk('public')->assertMissing($storedPath);
     Storage::disk('public')->assertExists($replacementPath);
 

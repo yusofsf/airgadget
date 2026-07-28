@@ -36,6 +36,7 @@ class HandleInertiaRequests extends Middleware
             ],
             'flash' => [
                 'status' => fn () => $request->session()->get('status'),
+                'createdProductId' => fn () => $request->session()->get('created_product_id'),
             ],
             'shippingMethods' => fn () => \App\Models\StoreSetting::shippingMethods(),
             'cardToCard' => [

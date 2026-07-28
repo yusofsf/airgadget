@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Article;
+use App\Models\ArticleCategory;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Tag;
@@ -46,13 +47,29 @@ class SitemapController extends Controller
                 'lastmod' => $this->lastModified($article->updated_at ?: $article->published_at),
             ]));
 
-        Tag::query()
+        ArticleCategory::query()
             ->whereHas('articles', fn ($query) => $query->where('is_published', true))
             ->withMax(['articles' => fn ($query) => $query->where('is_published', true)], 'updated_at')
             ->get()
+            ->each(fn (ArticleCategory $category) => $urls->push([
+                'loc' => route('article-categories.show', $category),
+                'lastmod' => $this->lastModified($category->articles_max_updated_at ?: $category->updated_at),
+            ]));
+
+        Tag::query()
+            ->where(fn ($query) => $query
+                ->whereHas('articles', fn ($articles) => $articles->where('is_published', true))
+                ->orWhereHas('products', fn ($products) => $products->where('is_active', true)))
+            ->withMax(['articles' => fn ($query) => $query->where('is_published', true)], 'updated_at')
+            ->withMax(['products' => fn ($query) => $query->where('is_active', true)], 'updated_at')
+            ->get()
             ->each(fn (Tag $tag) => $urls->push([
                 'loc' => route('tags.show', $tag),
-                'lastmod' => $this->lastModified($tag->articles_max_updated_at ?: $tag->updated_at),
+                'lastmod' => $this->lastModified(collect([
+                    $tag->articles_max_updated_at,
+                    $tag->products_max_updated_at,
+                    $tag->updated_at,
+                ])->filter()->max()),
             ]));
 
         return response()
