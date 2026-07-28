@@ -43,7 +43,7 @@ type Article = {
     tags?: Tag[];
 };
 type ShippingMethod = { code: string; name: string; description: string; cost: number; is_active: boolean };
-type Order = { id: number; number: string; status: string; total: number; shipping_method: string; created_at: string; items?: { quantity: number }[]; user?: { first_name?: string; phone_number?: string } };
+type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; total: number; shipping_method: string; payment_method?: string; created_at: string; address?: { customer_name?: string; phone?: string; postal_code?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; price?: number; quantity: number }[]; user?: { first_name?: string; phone_number?: string } };
 type Accounting = { received: number; product_revenue: number; shipping_revenue: number; sold_items: number; paid_orders: number; pending_orders: number };
 type CardProduct = {
     id: number;
@@ -126,6 +126,8 @@ export default function Storefront({
     shippingMethods = [],
     accounting = {},
     orders = [],
+    invoice,
+    invoiceShipping,
 }: any) {
     const [search, setSearch] = useState('');
     const [cart, setCart] = useState<CardProduct[]>(() => {
@@ -161,6 +163,8 @@ export default function Storefront({
                   ? 'حساب کاربری'
                   : view === 'checkout'
                     ? 'تکمیل سفارش'
+                    : view === 'invoice'
+                      ? 'فاکتور سفارش'
                     : '';
 
     return (
@@ -277,7 +281,9 @@ export default function Storefront({
                 ) : view === 'account' ? (
                     <Account orders={orders} />
                 ) : view === 'checkout' ? (
-                    <Checkout cart={cart} shippingMethods={shippingMethods} clearCart={() => setCart([])} />
+                    <Checkout cart={cart} shippingMethods={shippingMethods} clearCart={() => setCart([])} auth={auth} />
+                ) : view === 'invoice' ? (
+                    <Invoice order={invoice} shipping={invoiceShipping} />
                 ) : view === 'about' || view === 'contact' || view === 'terms' ? (
                     <StaticPage type={view} />
                 ) : (
@@ -617,7 +623,7 @@ function Account({ orders }: { orders: Order[] }) {
                     </div>
                     <div className="customer-orders">
                         {orders.length ? orders.map((order) => (
-                            <article key={order.id}><span><b>سفارش {order.number}</b><small>{labels[order.status] || order.status}</small></span><strong>{toman(Number(order.total))}</strong></article>
+                            <article key={order.id}><span><b>سفارش {order.number}</b><small>{labels[order.status] || order.status}</small></span><strong>{toman(Number(order.total))}</strong>{order.invoice_token && <Link href={`/orders/${order.id}/invoice/${order.invoice_token}`}>مشاهده فاکتور</Link>}</article>
                         )) : <p>هنوز سفارشی ثبت نکرده‌اید.</p>}
                     </div>
                 </section>
@@ -626,13 +632,21 @@ function Account({ orders }: { orders: Order[] }) {
     );
 }
 
-function Checkout({ cart, shippingMethods, clearCart }: { cart: CardProduct[]; shippingMethods: ShippingMethod[]; clearCart: () => void }) {
+function Checkout({ cart, shippingMethods, clearCart, auth }: { cart: CardProduct[]; shippingMethods: ShippingMethod[]; clearCart: () => void; auth: any }) {
     const quantities = Object.values(cart.reduce<Record<number, { product_id: number; quantity: number }>>((items, product) => {
         items[product.id] = items[product.id] || { product_id: product.id, quantity: 0 };
         items[product.id].quantity++;
         return items;
     }, {}));
-    const form = useForm({ shipping_method: shippingMethods[0]?.code || '', payment_method: 'card_to_card', address: '', items: quantities });
+    const form = useForm({
+        customer_name: [auth?.user?.first_name, auth?.user?.last_name].filter(Boolean).join(' '),
+        phone: auth?.user?.phone_number || '',
+        postal_code: '',
+        address: '',
+        shipping_method: shippingMethods[0]?.code || '',
+        payment_method: 'card_to_card',
+        items: quantities,
+    });
     const shipping = shippingMethods.find((method) => method.code === form.data.shipping_method);
     const subtotal = cart.reduce((sum, product) => sum + (product.sale || product.price), 0);
     return (
@@ -640,6 +654,13 @@ function Checkout({ cart, shippingMethods, clearCart }: { cart: CardProduct[]; s
             <h1>تکمیل سفارش</h1>
             <div className="checkout-grid">
                 <form onSubmit={(event) => { event.preventDefault(); form.post(route('checkout.store'), { onSuccess: clearCart }); }}>
+                    <h3>مشخصات تحویل‌گیرنده</h3>
+                    <div className="admin-two">
+                        <input placeholder="نام و نام خانوادگی" value={form.data.customer_name} onChange={(event) => form.setData('customer_name', event.target.value)} />
+                        <input placeholder="شماره موبایل" inputMode="tel" value={form.data.phone} onChange={(event) => form.setData('phone', event.target.value)} />
+                    </div>
+                    <input placeholder="کد پستی ۱۰ رقمی" inputMode="numeric" value={form.data.postal_code} onChange={(event) => form.setData('postal_code', event.target.value)} />
+                    <textarea placeholder="آدرس کامل گیرنده" value={form.data.address} onChange={(event) => form.setData('address', event.target.value)} />
                     <h3>روش ارسال</h3>
                     {shippingMethods.length ? shippingMethods.map((method) => (
                         <label className="shipping-choice" key={method.code}>
@@ -651,7 +672,6 @@ function Checkout({ cart, shippingMethods, clearCart }: { cart: CardProduct[]; s
                     <h3>روش پرداخت</h3>
                     <label><input type="radio" name="pay" checked={form.data.payment_method === 'card_to_card'} onChange={() => form.setData('payment_method', 'card_to_card')} /> کارت به کارت و بررسی پرداخت</label>
                     <label><input type="radio" name="pay" checked={form.data.payment_method === 'zarinpal'} onChange={() => form.setData('payment_method', 'zarinpal')} /> پرداخت آنلاین</label>
-                    {form.data.shipping_method !== 'pickup' && <input placeholder="آدرس کامل گیرنده" value={form.data.address} onChange={(event) => form.setData('address', event.target.value)} />}
                     {Object.keys(form.errors).length > 0 && <div className="form-error-box">{Object.values(form.errors)[0]}</div>}
                     <button className="primary" disabled={form.processing || cart.length === 0 || !form.data.shipping_method}>{form.processing ? 'در حال ثبت...' : 'ثبت سفارش'}</button>
                 </form>
@@ -662,6 +682,35 @@ function Checkout({ cart, shippingMethods, clearCart }: { cart: CardProduct[]; s
                     <b>{toman(subtotal + Number(shipping?.cost || 0))}</b>
                 </aside>
             </div>
+        </main>
+    );
+}
+
+function Invoice({ order, shipping }: { order: Order; shipping?: ShippingMethod }) {
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', processing: 'در حال آماده‌سازی', pending_review: 'در انتظار بررسی پرداخت', completed: 'تکمیل‌شده', cancelled: 'لغوشده', failed: 'ناموفق', refunded: 'مرجوع‌شده' };
+    return (
+        <main className="page invoice-page">
+            <div className="invoice-actions"><Link href="/">بازگشت به فروشگاه</Link><button onClick={() => window.print()}>چاپ فاکتور</button></div>
+            <section className="invoice-sheet">
+                <header><div className="logo">air<span>gadget</span></div><div><b>فاکتور فروش</b><small>شماره: {order.number}</small></div></header>
+                <div className="invoice-meta">
+                    <p><b>خریدار:</b> {order.address?.customer_name}</p>
+                    <p><b>موبایل:</b> {order.address?.phone}</p>
+                    <p><b>کد پستی:</b> {order.address?.postal_code}</p>
+                    <p><b>وضعیت:</b> {labels[order.status] || order.status}</p>
+                    <p className="invoice-address"><b>آدرس:</b> {order.address?.full}</p>
+                </div>
+                <div className="invoice-table">
+                    <div className="invoice-row invoice-head"><span>شرح کالا</span><span>تعداد</span><span>قیمت واحد</span><span>جمع</span></div>
+                    {order.items?.map((item) => <div className="invoice-row" key={item.id || item.sku}><span>{item.name}<small>{item.sku}</small></span><span>{item.quantity}</span><span>{toman(Number(item.price || 0))}</span><span>{toman(Number(item.price || 0) * item.quantity)}</span></div>)}
+                </div>
+                <div className="invoice-totals">
+                    <p><span>جمع کالاها</span><b>{toman(Number(order.subtotal || 0))}</b></p>
+                    <p><span>ارسال ({shipping?.name || order.shipping_method})</span><b>{Number(order.shipping_cost || 0) ? toman(Number(order.shipping_cost)) : 'رایگان'}</b></p>
+                    <p className="grand"><span>مبلغ قابل پرداخت</span><b>{toman(Number(order.total))}</b></p>
+                </div>
+                <footer>ایرگجت ـ مشهد، عبدالمطلب ۳۵ ـ پشتیبانی {supportPhone}</footer>
+            </section>
         </main>
     );
 }
@@ -996,7 +1045,7 @@ function AccountingPanel({ accounting, orders }: { accounting: Accounting; order
             <div className="orders-table">
                 {orders.length ? orders.map((order) => (
                     <article key={order.id}>
-                        <span><b>سفارش {order.number}</b><small>{order.user?.first_name || order.user?.phone_number || 'کاربر'} · {new Intl.DateTimeFormat('fa-IR').format(new Date(order.created_at))}</small></span>
+                        <span><b>سفارش {order.number}</b><small>{order.user?.first_name || order.address?.customer_name || order.user?.phone_number || order.address?.phone || 'مهمان'} · {new Intl.DateTimeFormat('fa-IR').format(new Date(order.created_at))}</small></span>
                         <span><b>{toman(Number(order.total))}</b><small>{order.items?.reduce((sum, item) => sum + Number(item.quantity), 0) || 0} کالا</small></span>
                         <select value={order.status} onChange={(event) => router.patch(route('admin.orders.status', order.id), { status: event.target.value }, { preserveScroll: true })}>
                             {Object.entries(labels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
