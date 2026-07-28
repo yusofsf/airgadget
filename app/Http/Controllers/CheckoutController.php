@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\StoreSetting;
 use App\Services\ZarinpalGateway;
+use App\Services\OrderReservationService;
 use App\Support\Phone;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,8 +22,9 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class CheckoutController extends Controller
 {
-    public function store(Request $request, ZarinpalGateway $gateway): SymfonyResponse
+    public function store(Request $request, ZarinpalGateway $gateway, OrderReservationService $reservations): SymfonyResponse
     {
+        $reservations->expireUnpaidOrders();
         $request->merge([
             'phone' => Phone::normalize($request->input('phone')),
             'postal_code' => $this->englishDigits($request->input('postal_code')),
@@ -85,6 +87,7 @@ class CheckoutController extends Controller
                 'status' => $validated['payment_method'] === 'card_to_card' ? 'pending_review' : 'pending_payment',
                 'shipping_method' => $validated['shipping_method'],
                 'payment_method' => $validated['payment_method'],
+                'payment_expires_at' => $validated['payment_method'] === 'zarinpal' ? now()->addMinutes(10) : null,
                 'payment_receipt' => $receiptPath,
                 'card_to_card_amount' => $validated['payment_method'] === 'card_to_card' ? (int) $validated['card_amount'] : null,
                 'subtotal' => $subtotal,
@@ -139,31 +142,46 @@ class CheckoutController extends Controller
         return Inertia::location($payment['url']);
     }
 
-    public function callback(Request $request, Order $order, string $token, ZarinpalGateway $gateway): Response|RedirectResponse
+    public function callback(Request $request, Order $order, string $token, ZarinpalGateway $gateway, OrderReservationService $reservations): Response|RedirectResponse
     {
         $this->authorizeToken($order, $token);
+        $reservations->expireUnpaidOrders();
+        $order->refresh();
         $authority = (string) $request->query('Authority');
 
         if ($order->paid_at) {
             return redirect()->route('orders.invoice', ['order' => $order, 'token' => $token]);
         }
 
-        if ($request->query('Status') !== 'OK' || $authority === '' || ! hash_equals((string) $order->payment_authority, $authority)) {
-            $this->failAndRelease($order);
-
+        if ($order->status === 'unpaid' || $order->inventory_released) {
             return Inertia::render('Storefront', [
                 'view' => 'payment-result',
-                'paymentResult' => ['success' => false, 'number' => $order->number, 'message' => 'پرداخت لغو شد یا توسط درگاه تأیید نشد.'],
+                'paymentResult' => ['success' => false, 'number' => $order->number, 'message' => 'مهلت ۱۰ دقیقه‌ای پرداخت تمام شده و سفارش پرداخت‌نشده ثبت شده است.'],
+            ]);
+        }
+
+        if ($request->query('Status') !== 'OK' || $authority === '' || ! hash_equals((string) $order->payment_authority, $authority)) {
+            return Inertia::render('Storefront', [
+                'view' => 'payment-result',
+                'paymentResult' => [
+                    'success' => false,
+                    'number' => $order->number,
+                    'expires_at' => optional($order->payment_expires_at)->toIso8601String(),
+                    'message' => 'پرداخت انجام نشد. سبد و موجودی شما تا پایان مهلت ۱۰ دقیقه‌ای محفوظ است و می‌توانید دوباره پرداخت کنید.',
+                ],
             ]);
         }
 
         $verification = $gateway->verify($authority, (int) $order->total);
         if (! $verification['success']) {
-            $this->failAndRelease($order);
-
             return Inertia::render('Storefront', [
                 'view' => 'payment-result',
-                'paymentResult' => ['success' => false, 'number' => $order->number, 'message' => $verification['message']],
+                'paymentResult' => [
+                    'success' => false,
+                    'number' => $order->number,
+                    'expires_at' => optional($order->payment_expires_at)->toIso8601String(),
+                    'message' => $verification['message'].' سبد شما تا پایان مهلت ۱۰ دقیقه‌ای حفظ می‌شود.',
+                ],
             ]);
         }
 
@@ -174,6 +192,7 @@ class CheckoutController extends Controller
                     'status' => 'pending_review',
                     'payment_reference' => $verification['reference'],
                     'paid_at' => now(),
+                    'payment_expires_at' => null,
                 ]);
             }
         });
@@ -232,7 +251,7 @@ class CheckoutController extends Controller
                     Product::whereKey($item->product_id)->increment('stock', $item->quantity);
                 }
             }
-            $lockedOrder->update(['status' => 'failed', 'inventory_released' => true]);
+            $lockedOrder->update(['status' => 'unpaid', 'inventory_released' => true]);
         });
     }
 

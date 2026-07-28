@@ -27,6 +27,7 @@
     @php
         $statusLabels = [
             'pending_payment' => 'در انتظار پرداخت',
+            'unpaid' => 'پرداخت‌نشده',
             'pending_review' => 'ثبت شده',
             'processing' => 'تأیید شده',
             'completed' => 'ارسال شده',

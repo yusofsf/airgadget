@@ -64,6 +64,7 @@ type SeoMeta = {
     image?: string;
     canonical?: string;
 };
+type StoredCart = { items: CardProduct[]; expiresAt: number | null };
 type AdminForm = {
     name: string;
     sku: string;
@@ -110,6 +111,17 @@ const toCard = (p: Product): CardProduct => ({
     stock: Number(p.stock || 0),
     image: p.main_image || p.images?.[0]?.path,
 });
+const readStoredCart = (): StoredCart => {
+    if (typeof window === 'undefined') return { items: [], expiresAt: null };
+    try {
+        const stored = JSON.parse(window.localStorage.getItem('airgadget-cart') || '[]');
+        if (Array.isArray(stored)) return { items: stored, expiresAt: null };
+        if (stored?.expiresAt && stored.expiresAt <= Date.now()) return { items: [], expiresAt: null };
+        return { items: Array.isArray(stored?.items) ? stored.items : [], expiresAt: stored?.expiresAt || null };
+    } catch {
+        return { items: [], expiresAt: null };
+    }
+};
 
 export default function Storefront({
     view = 'home',
@@ -134,10 +146,9 @@ export default function Storefront({
     cardToCard,
 }: any) {
     const [search, setSearch] = useState('');
-    const [cart, setCart] = useState<CardProduct[]>(() => {
-        if (typeof window === 'undefined') return [];
-        try { return JSON.parse(window.localStorage.getItem('airgadget-cart') || '[]'); } catch { return []; }
-    });
+    const [initialCart] = useState<StoredCart>(readStoredCart);
+    const [cart, setCart] = useState<CardProduct[]>(initialCart.items);
+    const [cartExpiresAt, setCartExpiresAt] = useState<number | null>(initialCart.expiresAt);
     const [fav, setFav] = useState<number[]>([]);
     const [panel, setPanel] = useState<'cart' | 'account' | null>(null);
     const [filter, setFilter] = useState('');
@@ -154,11 +165,32 @@ export default function Storefront({
         [list, search, filter],
     );
     useEffect(() => {
-        window.localStorage.setItem('airgadget-cart', JSON.stringify(cart));
-    }, [cart]);
+        window.localStorage.setItem('airgadget-cart', JSON.stringify({ items: cart, expiresAt: cartExpiresAt }));
+    }, [cart, cartExpiresAt]);
+    useEffect(() => {
+        if (!cartExpiresAt) return;
+        const remaining = cartExpiresAt - Date.now();
+        if (remaining <= 0) {
+            setCart([]);
+            setCartExpiresAt(null);
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            setCart([]);
+            setCartExpiresAt(null);
+        }, remaining);
+        return () => window.clearTimeout(timer);
+    }, [cartExpiresAt]);
     const addToCart = (item: CardProduct) => {
+        setCartExpiresAt(null);
         setCart((items) => items.filter((cartItem) => cartItem.id === item.id).length < item.stock ? [...items, item] : items);
     };
+    const clearCart = () => {
+        setCart([]);
+        setCartExpiresAt(null);
+    };
+    const holdCartForPayment = () => setCartExpiresAt(Date.now() + 10 * 60 * 1000);
+    const releaseCartHold = () => setCartExpiresAt(null);
     const section =
         view === 'shop'
             ? 'فروشگاه'
@@ -295,9 +327,9 @@ export default function Storefront({
                 ) : view === 'account' ? (
                     <Account orders={orders} auth={auth} />
                 ) : view === 'checkout' ? (
-                    <Checkout cart={cart} shippingMethods={shippingMethods} clearCart={() => setCart([])} auth={auth} cardToCard={cardToCard} />
+                    <Checkout cart={cart} shippingMethods={shippingMethods} clearCart={clearCart} holdCartForPayment={holdCartForPayment} releaseCartHold={releaseCartHold} auth={auth} cardToCard={cardToCard} />
                 ) : view === 'invoice' ? (
-                    <Invoice order={invoice} shipping={invoiceShipping} clearCart={() => setCart([])} />
+                    <Invoice order={invoice} shipping={invoiceShipping} clearCart={clearCart} />
                 ) : view === 'tracking' ? (
                     <OrderTracking order={trackedOrder} error={trackingError} />
                 ) : view === 'payment-result' ? (
@@ -633,7 +665,7 @@ function Account({ orders, auth }: { orders: Order[]; auth: any }) {
         password: '',
         password_confirmation: '',
     });
-    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', unpaid: 'پرداخت‌نشده', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
     return (
         <main className="page account">
             <h1>حساب کاربری من</h1>
@@ -679,7 +711,7 @@ function Account({ orders, auth }: { orders: Order[]; auth: any }) {
     );
 }
 
-function Checkout({ cart, shippingMethods, clearCart, auth, cardToCard }: { cart: CardProduct[]; shippingMethods: ShippingMethod[]; clearCart: () => void; auth: any; cardToCard?: { number: string; holder: string } }) {
+function Checkout({ cart, shippingMethods, clearCart, holdCartForPayment, releaseCartHold, auth, cardToCard }: { cart: CardProduct[]; shippingMethods: ShippingMethod[]; clearCart: () => void; holdCartForPayment: () => void; releaseCartHold: () => void; auth: any; cardToCard?: { number: string; holder: string } }) {
     const quantities = Object.values(cart.reduce<Record<number, { product_id: number; quantity: number }>>((items, product) => {
         items[product.id] = items[product.id] || { product_id: product.id, quantity: 0 };
         items[product.id].quantity++;
@@ -710,7 +742,15 @@ function Checkout({ cart, shippingMethods, clearCart, auth, cardToCard }: { cart
             {!auth?.user && <div className="checkout-auth-choice"><div><b>خرید بدون ثبت‌نام</b><small>اطلاعات گیرنده را وارد کنید و مستقیم پرداخت کنید.</small></div><span>یا</span><Link href="/login">ورود</Link><Link href="/register">ثبت‌نام</Link></div>}
             {auth?.user && <div className="checkout-user-note">سفارش برای حساب <b>{auth.user.first_name} {auth.user.last_name}</b> ثبت می‌شود و در پنل شما قابل مشاهده است.</div>}
             <div className="checkout-grid">
-                <form onSubmit={(event) => { event.preventDefault(); form.post(route('checkout.store'), { forceFormData: form.data.payment_method === 'card_to_card', onSuccess: clearCart }); }}>
+                <form onSubmit={(event) => {
+                    event.preventDefault();
+                    if (form.data.payment_method === 'zarinpal') holdCartForPayment();
+                    form.post(route('checkout.store'), {
+                        forceFormData: form.data.payment_method === 'card_to_card',
+                        onSuccess: () => { if (form.data.payment_method === 'card_to_card') clearCart(); },
+                        onError: releaseCartHold,
+                    });
+                }}>
                     <h3>مشخصات تحویل‌گیرنده</h3>
                     <div className="admin-two">
                         <input placeholder="نام" value={form.data.first_name} onChange={(event) => form.setData('first_name', event.target.value)} />
@@ -755,10 +795,10 @@ function Checkout({ cart, shippingMethods, clearCart, auth, cardToCard }: { cart
 
 function Invoice({ order, shipping, clearCart }: { order: Order; shipping?: ShippingMethod; clearCart: () => void }) {
     const { props } = usePage<any>();
-    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', unpaid: 'پرداخت‌نشده', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
     useEffect(() => {
-        if (order.paid_at) clearCart();
-    }, [order.paid_at]);
+        if (order.paid_at || order.payment_method === 'card_to_card') clearCart();
+    }, [order.paid_at, order.payment_method]);
     return (
         <main className="page invoice-page">
             {props.flash?.status && <div className="payment-success"><b>پرداخت موفق</b><span>{props.flash.status}</span></div>}
@@ -805,7 +845,7 @@ function OrderTrackingCompact() {
 
 function OrderTracking({ order, error }: { order?: Order; error?: string }) {
     const form = useForm({ number: order?.number || '', phone: order?.address?.phone || '' });
-    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', unpaid: 'پرداخت‌نشده', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
     const steps = ['pending_review', 'processing', 'completed'];
     const activeStep = steps.indexOf(order?.status || '');
     return (
@@ -829,14 +869,24 @@ function OrderTracking({ order, error }: { order?: Order; error?: string }) {
     );
 }
 
-function PaymentResult({ result }: { result: { success?: boolean; number?: string; message?: string } }) {
+function PaymentResult({ result }: { result: { success?: boolean; number?: string; message?: string; expires_at?: string } }) {
+    const expiresAt = result?.expires_at ? new Date(result.expires_at).getTime() : 0;
+    const [remaining, setRemaining] = useState(() => Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
+    useEffect(() => {
+        if (!expiresAt) return;
+        const timer = window.setInterval(() => setRemaining(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))), 1000);
+        return () => window.clearInterval(timer);
+    }, [expiresAt]);
+    const minutes = Math.floor(remaining / 60);
+    const seconds = String(remaining % 60).padStart(2, '0');
     return (
         <main className="page payment-result">
             <div className={result?.success ? 'result-icon success' : 'result-icon failed'}>{result?.success ? '✓' : '×'}</div>
             <h1>{result?.success ? 'پرداخت موفق بود' : 'پرداخت انجام نشد'}</h1>
             {result?.number && <p>کد سفارش: <b>{result.number}</b></p>}
             <p>{result?.message}</p>
-            <div><Link className="primary" href="/">بازگشت به فروشگاه</Link><Link className="secondary" href="/track-order">پیگیری سفارش</Link></div>
+            {!result?.success && expiresAt > 0 && <div className={remaining > 0 ? 'payment-countdown' : 'payment-countdown expired'}>{remaining > 0 ? <>زمان حفظ سبد: <b dir="ltr">{minutes}:{seconds}</b></> : 'مهلت پرداخت تمام شد؛ وضعیت سفارش پرداخت‌نشده است.'}</div>}
+            <div>{!result?.success && remaining > 0 && <Link className="primary" href="/checkout">تلاش دوباره برای پرداخت</Link>}<Link className={remaining > 0 ? 'secondary' : 'primary'} href="/">بازگشت به فروشگاه</Link><Link className="secondary" href="/track-order">پیگیری سفارش</Link></div>
         </main>
     );
 }
@@ -1156,7 +1206,7 @@ function ArticleManager({ article }: { article: Article }) {
 }
 
 function AccountingPanel({ accounting, orders }: { accounting: Accounting; orders: Order[] }) {
-    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', unpaid: 'پرداخت‌نشده', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
     return (
         <section className="admin-panel">
             <div className="accounting-cards">

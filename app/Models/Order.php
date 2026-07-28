@@ -11,6 +11,7 @@ class Order extends Model
     protected $casts = [
         'address' => 'array',
         'paid_at' => 'datetime',
+        'payment_expires_at' => 'datetime',
         'inventory_released' => 'boolean',
         'card_to_card_amount' => 'integer',
     ];

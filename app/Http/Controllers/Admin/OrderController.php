@@ -15,7 +15,7 @@ class OrderController extends Controller
     public function updateStatus(Request $request, Order $order): RedirectResponse
     {
         $validated = $request->validate([
-            'status' => ['required', 'in:pending_payment,processing,pending_review,completed,cancelled,failed,refunded'],
+            'status' => ['required', 'in:pending_payment,processing,pending_review,completed,cancelled,failed,refunded,unpaid'],
         ]);
 
         DB::transaction(function () use ($order, $validated) {

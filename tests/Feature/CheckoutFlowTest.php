@@ -72,7 +72,7 @@ test('a guest can pay with the mock zarinpal gateway and receives a trackable or
         ->assertHeader('content-type', 'application/pdf');
 });
 
-test('a cancelled payment releases reserved stock only once', function () {
+test('a cancelled payment keeps the cart reservation for ten minutes then marks the order unpaid', function () {
     $product = Product::firstOrFail();
     $payload = [
         'first_name' => 'مینا',
@@ -98,9 +98,18 @@ test('a cancelled payment releases reserved stock only once', function () {
     $this->get($callback)->assertOk();
     $this->get($callback)->assertOk();
 
+    expect($product->fresh()->stock)->toBe(1)
+        ->and($order->fresh()->inventory_released)->toBeFalse()
+        ->and($order->fresh()->status)->toBe('pending_payment')
+        ->and($order->fresh()->payment_expires_at)->not->toBeNull();
+
+    $this->travel(11)->minutes();
+    $this->artisan('orders:expire-unpaid')->assertSuccessful();
+    $this->artisan('orders:expire-unpaid')->assertSuccessful();
+
     expect($product->fresh()->stock)->toBe(3)
         ->and($order->fresh()->inventory_released)->toBeTrue()
-        ->and($order->fresh()->status)->toBe('failed');
+        ->and($order->fresh()->status)->toBe('unpaid');
 });
 
 test('a guest can submit an exact card to card payment amount and receipt', function () {

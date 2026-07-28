@@ -4,14 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Support\Phone;
+use App\Services\OrderReservationService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class OrderTrackingController extends Controller
 {
-    public function __invoke(Request $request): Response
+    public function __invoke(Request $request, OrderReservationService $reservations): Response
     {
+        $reservations->expireUnpaidOrders();
         $trackedOrder = null;
         $trackingError = null;
 
