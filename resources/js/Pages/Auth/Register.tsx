@@ -1,151 +1,37 @@
-import { useEffect, FormEventHandler } from 'react';
-import GuestLayout from '@/Layouts/GuestLayout';
-import InputError from '@/Components/InputError';
-import InputLabel from '@/Components/InputLabel';
-import PrimaryButton from '@/Components/PrimaryButton';
-import TextInput from '@/Components/TextInput';
+import { FormEventHandler } from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
+import GuestLayout from '@/Layouts/GuestLayout';
 
 export default function Register() {
-    const { data, setData, post, processing, errors, reset } = useForm({
-        first_name: '',
-        last_name: '',
-        phone_number: '',
-        email: '',
-        password: '',
-        password_confirmation: '',
-    });
-
-    useEffect(() => {
-        return () => {
-            reset('password', 'password_confirmation');
-        };
-    }, []);
-
-    const submit: FormEventHandler = (e) => {
-        e.preventDefault();
-
-        post(route('register'));
+    const form = useForm({ first_name: '', last_name: '', phone_number: '', email: '', password: '', password_confirmation: '' });
+    const submit: FormEventHandler = (event) => {
+        event.preventDefault();
+        form.post(route('register'), { onFinish: () => form.reset('password', 'password_confirmation') });
     };
 
     return (
         <GuestLayout>
-            <Head title="Register" />
-
-            <form onSubmit={submit}>
-                <div>
-                    <InputLabel htmlFor="first_name" value="firstname"/>
-
-                    <TextInput
-                        id="first_name"
-                        name="first_name"
-                        value={data.first_name}
-                        className="mt-1 block w-full"
-                        autoComplete="first_name"
-                        isFocused={true}
-                        onChange={(e) => setData('first_name', e.target.value)}
-                        required
-                    />
-
-                    <InputError message={errors.first_name} className="mt-2"/>
-                </div>
-                <div>
-                    <InputLabel htmlFor="last_name" value="lastname"/>
-
-                    <TextInput
-                        id="last_name"
-                        name="last_name"
-                        value={data.last_name}
-                        className="mt-1 block w-full"
-                        autoComplete="last_name"
-                        isFocused={true}
-                        onChange={(e) => setData('last_name', e.target.value)}
-                        required
-                    />
-
-                    <InputError message={errors.last_name} className="mt-2"/>
-                </div>
-                <div>
-                    <InputLabel htmlFor="phone_number" value="phonenumber"/>
-
-                    <TextInput
-                        id="phone_number"
-                        name="phone_number"
-                        value={data.phone_number}
-                        className="mt-1 block w-full"
-                        autoComplete="phone_number"
-                        isFocused={true}
-                        onChange={(e) => setData('phone_number', e.target.value)}
-                        required
-                    />
-
-                    <InputError message={errors.phone_number} className="mt-2"/>
-                </div>
-
-                <div className="mt-4">
-                    <InputLabel htmlFor="email" value="Email"/>
-
-                    <TextInput
-                        id="email"
-                        type="email"
-                        name="email"
-                        value={data.email}
-                        className="mt-1 block w-full"
-                        autoComplete="email"
-                        onChange={(e) => setData('email', e.target.value)}
-                        required
-                    />
-
-                    <InputError message={errors.email} className="mt-2"/>
-                </div>
-
-                <div className="mt-4">
-                    <InputLabel htmlFor="password" value="Password"/>
-
-                    <TextInput
-                        id="password"
-                        type="password"
-                        name="password"
-                        value={data.password}
-                        className="mt-1 block w-full"
-                        autoComplete="new-password"
-                        onChange={(e) => setData('password', e.target.value)}
-                        required
-                    />
-
-                    <InputError message={errors.password} className="mt-2"/>
-                </div>
-
-                <div className="mt-4">
-                    <InputLabel htmlFor="password_confirmation" value="Confirm Password"/>
-
-                    <TextInput
-                        id="password_confirmation"
-                        type="password"
-                        name="password_confirmation"
-                        value={data.password_confirmation}
-                        className="mt-1 block w-full"
-                        autoComplete="new-password"
-                        onChange={(e) => setData('password_confirmation', e.target.value)}
-                        required
-                    />
-
-                    <InputError message={errors.password_confirmation} className="mt-2"/>
-                </div>
-
-                <div className="flex items-center justify-end mt-4">
-                    <Link
-                        href={route('login')}
-                        className="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                    >
-                        Already registered?
-                    </Link>
-
-                    <PrimaryButton className="ms-4" disabled={processing}>
-                        Register
-                    </PrimaryButton>
-                </div>
+            <Head title="ثبت‌نام" />
+            <div className="auth-heading" dir="rtl">
+                <span className="auth-kicker">حساب کاربری ایرگجت</span>
+                <h1>ساخت حساب کاربری</h1>
+                <p>برای پیگیری سفارش‌ها و نگهداری فاکتورها اطلاعات خود را وارد کنید.</p>
+            </div>
+            <form className="auth-form" onSubmit={submit} dir="rtl">
+                <div className="auth-two"><label>نام<input value={form.data.first_name} onChange={(event) => form.setData('first_name', event.target.value)} autoFocus /></label><label>نام خانوادگی<input value={form.data.last_name} onChange={(event) => form.setData('last_name', event.target.value)} /></label></div>
+                {form.errors.first_name && <small className="auth-error">{form.errors.first_name}</small>}
+                {form.errors.last_name && <small className="auth-error">{form.errors.last_name}</small>}
+                <label>شماره موبایل</label>
+                <input type="tel" inputMode="numeric" placeholder="۰۹۱۲۱۲۳۴۵۶۷" value={form.data.phone_number} onChange={(event) => form.setData('phone_number', event.target.value)} />
+                {form.errors.phone_number && <small className="auth-error">{form.errors.phone_number}</small>}
+                <label>ایمیل</label>
+                <input type="email" value={form.data.email} onChange={(event) => form.setData('email', event.target.value)} />
+                {form.errors.email && <small className="auth-error">{form.errors.email}</small>}
+                <div className="auth-two"><label>رمز عبور<input type="password" value={form.data.password} onChange={(event) => form.setData('password', event.target.value)} /></label><label>تکرار رمز عبور<input type="password" value={form.data.password_confirmation} onChange={(event) => form.setData('password_confirmation', event.target.value)} /></label></div>
+                {form.errors.password && <small className="auth-error">{form.errors.password}</small>}
+                <button className="auth-submit" disabled={form.processing}>{form.processing ? 'در حال ثبت‌نام...' : 'ثبت‌نام'}</button>
             </form>
+            <p className="auth-back">حساب دارید؟ <Link href="/login">وارد شوید</Link></p>
         </GuestLayout>
     );
 }

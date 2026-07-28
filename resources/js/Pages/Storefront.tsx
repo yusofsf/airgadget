@@ -194,9 +194,9 @@ export default function Storefront({
                         <Link href="/contact-us">تماس با ما</Link>
                     </nav>
                     <div className="head-actions">
-                        <button className="icon account-icon" aria-label="حساب کاربری" onClick={() => setPanel('account')}>
-                            ◎
-                        </button>
+                        <Link className="account-entry" href={auth?.user ? (auth.user.is_admin ? '/admin' : '/account') : '/login'}>
+                            {auth?.user ? 'حساب من' : 'ورود و ثبت‌نام'}
+                        </Link>
                         <button className="icon basket" aria-label="سبد خرید" onClick={() => setPanel('cart')}>
                             ▱<i>{cart.length}</i>
                         </button>
@@ -279,7 +279,7 @@ export default function Storefront({
                 ) : view === 'admin' ? (
                     <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} accounting={accounting} orders={orders} shippingMethods={shippingMethods} />
                 ) : view === 'account' ? (
-                    <Account orders={orders} />
+                    <Account orders={orders} auth={auth} />
                 ) : view === 'checkout' ? (
                     <Checkout cart={cart} shippingMethods={shippingMethods} clearCart={() => setCart([])} auth={auth} />
                 ) : view === 'invoice' ? (
@@ -598,8 +598,17 @@ function StaticPage({ type }: any) {
     );
 }
 
-function Account({ orders }: { orders: Order[] }) {
+function Account({ orders, auth }: { orders: Order[]; auth: any }) {
     const { props } = usePage<any>();
+    const [section, setSection] = useState<'orders' | 'profile'>('orders');
+    const profile = useForm({
+        first_name: auth?.user?.first_name || '',
+        last_name: auth?.user?.last_name || '',
+        phone_number: auth?.user?.phone_number || '',
+        email: auth?.user?.email || '',
+        password: '',
+        password_confirmation: '',
+    });
     const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', processing: 'در حال آماده‌سازی', pending_review: 'در انتظار بررسی رسید', completed: 'تکمیل‌شده', cancelled: 'لغوشده', failed: 'ناموفق', refunded: 'مرجوع‌شده' };
     return (
         <main className="page account">
@@ -608,24 +617,32 @@ function Account({ orders }: { orders: Order[] }) {
             <div className="account-grid">
                 <aside>
                     <b>داشبورد</b>
-                    <a>سفارش‌های من</a>
-                    <a>آدرس‌ها</a>
-                    <a>علاقه‌مندی‌ها</a>
-                    <a>جزئیات حساب</a>
+                    <button className={section === 'orders' ? 'active' : ''} onClick={() => setSection('orders')}>سفارش‌های من</button>
+                    <button className={section === 'profile' ? 'active' : ''} onClick={() => setSection('profile')}>ویرایش اطلاعات حساب</button>
+                    {auth?.user?.is_admin && <Link href="/admin">پنل مدیریت فروشگاه</Link>}
+                    <button className="logout-button" onClick={() => router.post('/logout')}>خروج از حساب</button>
                 </aside>
                 <section>
-                    <h2>سلام، خوش آمدید</h2>
-                    <p>از این بخش می‌توانید سفارش‌ها، آدرس‌ها و فاکتورهای خود را مدیریت کنید.</p>
-                    <div className="stats">
-                        <b>{new Intl.NumberFormat('fa-IR').format(orders.length)}<small>سفارش</small></b>
-                        <b>۰<small>علاقه‌مندی</small></b>
-                        <b>۰<small>آدرس</small></b>
-                    </div>
-                    <div className="customer-orders">
-                        {orders.length ? orders.map((order) => (
-                            <article key={order.id}><span><b>سفارش {order.number}</b><small>{labels[order.status] || order.status}</small></span><strong>{toman(Number(order.total))}</strong>{order.invoice_token && <Link href={`/orders/${order.id}/invoice/${order.invoice_token}`}>مشاهده فاکتور</Link>}</article>
-                        )) : <p>هنوز سفارشی ثبت نکرده‌اید.</p>}
-                    </div>
+                    {section === 'orders' ? <>
+                        <h2>سفارش‌های من</h2>
+                        <p>{auth?.user?.first_name || 'کاربر'} عزیز، وضعیت سفارش‌ها و فاکتورهای شما اینجاست.</p>
+                        <div className="stats"><b>{new Intl.NumberFormat('fa-IR').format(orders.length)}<small>کل سفارش‌ها</small></b><b>{new Intl.NumberFormat('fa-IR').format(orders.filter((order) => order.status === 'completed').length)}<small>تکمیل‌شده</small></b></div>
+                        <div className="customer-orders">
+                            {orders.length ? orders.map((order) => (
+                                <article key={order.id}><span><b>سفارش {order.number}</b><small>{labels[order.status] || order.status}</small></span><strong>{toman(Number(order.total))}</strong>{order.invoice_token && <Link href={`/orders/${order.id}/invoice/${order.invoice_token}`}>مشاهده فاکتور</Link>}</article>
+                            )) : <p>هنوز سفارشی ثبت نکرده‌اید.</p>}
+                        </div>
+                    </> : <>
+                        <h2>ویرایش اطلاعات حساب</h2>
+                        <form className="profile-form" onSubmit={(event) => { event.preventDefault(); profile.patch(route('account.profile.update'), { preserveScroll: true, onSuccess: () => profile.reset('password', 'password_confirmation') }); }}>
+                            <div className="admin-two"><label>نام<input value={profile.data.first_name} onChange={(event) => profile.setData('first_name', event.target.value)} /></label><label>نام خانوادگی<input value={profile.data.last_name} onChange={(event) => profile.setData('last_name', event.target.value)} /></label></div>
+                            <label>شماره موبایل<input inputMode="tel" value={profile.data.phone_number} onChange={(event) => profile.setData('phone_number', event.target.value)} /></label>
+                            <label>ایمیل<input type="email" value={profile.data.email} onChange={(event) => profile.setData('email', event.target.value)} /></label>
+                            <div className="admin-two"><label>رمز عبور جدید (اختیاری)<input type="password" value={profile.data.password} onChange={(event) => profile.setData('password', event.target.value)} /></label><label>تکرار رمز جدید<input type="password" value={profile.data.password_confirmation} onChange={(event) => profile.setData('password_confirmation', event.target.value)} /></label></div>
+                            {Object.keys(profile.errors).length > 0 && <div className="form-error-box">{Object.values(profile.errors)[0]}</div>}
+                            <button className="primary" disabled={profile.processing}>{profile.processing ? 'در حال ذخیره...' : 'ذخیره اطلاعات حساب'}</button>
+                        </form>
+                    </>}
                 </section>
             </div>
         </main>
@@ -1117,13 +1134,14 @@ function AccountDrawer({ auth, close }: any) {
                 <>
                     <p>{auth.user.first_name || 'کاربر'} عزیز، خوش آمدید.</p>
                     <Link className="primary full" href={auth.user.is_admin ? '/admin' : '/account'}>
-                        {auth.user.is_admin ? 'ورود به پنل مدیریت' : 'مشاهده حساب کاربری'}
+                        ورود به حساب من
                     </Link>
                 </>
             ) : (
                 <>
                     <p>برای مشاهده سفارش‌ها، آدرس‌ها و علاقه‌مندی‌ها وارد حساب خود شوید.</p>
-                    <Link className="primary full" href="/login">ورود / ثبت‌نام</Link>
+                    <Link className="primary full" href="/login">ورود</Link>
+                    <Link className="secondary full" href="/register">ثبت‌نام</Link>
                 </>
             )}
         </aside>

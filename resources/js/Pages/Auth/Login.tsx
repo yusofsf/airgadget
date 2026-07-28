@@ -118,6 +118,7 @@ export default function Login({
                 </button>
             </form>
 
+            <p className="auth-back">حساب ندارید؟ <Link href="/register">ثبت‌نام کنید</Link></p>
             <p className="auth-back"><Link href="/">بازگشت به فروشگاه</Link></p>
         </GuestLayout>
     );
