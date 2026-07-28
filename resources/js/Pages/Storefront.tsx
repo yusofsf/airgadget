@@ -198,7 +198,12 @@ export default function Storefront({
                             {auth?.user ? 'حساب من' : 'ورود و ثبت‌نام'}
                         </Link>
                         <button className="icon basket" aria-label="سبد خرید" onClick={() => setPanel('cart')}>
-                            ▱<i>{cart.length}</i>
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M3 4h2l2.1 9.1a2 2 0 0 0 2 1.55h7.85a2 2 0 0 0 1.94-1.52L20.3 7H6" />
+                                <circle cx="9.5" cy="19" r="1.25" />
+                                <circle cx="17" cy="19" r="1.25" />
+                            </svg>
+                            <i>{cart.length}</i>
                         </button>
                         <button
                             className="icon menu-toggle"
