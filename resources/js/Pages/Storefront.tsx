@@ -1,4 +1,4 @@
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { FormEvent, useMemo, useState } from 'react';
 
 type Brand = { id: number; name: string };
@@ -24,6 +24,7 @@ type Product = {
     images?: UploadedImage[];
     attributes?: { color?: string };
     stock: number;
+    is_active?: boolean;
 };
 type Article = {
     id: number;
@@ -38,8 +39,12 @@ type Article = {
     meta_keywords?: string | null;
     canonical_url?: string | null;
     published_at?: string | null;
+    is_published?: boolean;
     tags?: Tag[];
 };
+type ShippingMethod = { code: string; name: string; description: string; cost: number; is_active: boolean };
+type Order = { id: number; number: string; status: string; total: number; shipping_method: string; created_at: string; items?: { quantity: number }[]; user?: { first_name?: string; phone_number?: string } };
+type Accounting = { received: number; product_revenue: number; shipping_revenue: number; sold_items: number; paid_orders: number; pending_orders: number };
 type CardProduct = {
     id: number;
     name: string;
@@ -118,6 +123,9 @@ export default function Storefront({
     article,
     topics = [],
     tags = [],
+    shippingMethods = [],
+    accounting = {},
+    orders = [],
 }: any) {
     const [search, setSearch] = useState('');
     const [cart, setCart] = useState<CardProduct[]>([]);
@@ -259,11 +267,11 @@ export default function Storefront({
                 ) : view === 'product' ? (
                     <ProductDetail product={product} add={(item: CardProduct) => setCart((items) => [...items, item])} />
                 ) : view === 'admin' ? (
-                    <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} />
+                    <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} accounting={accounting} orders={orders} shippingMethods={shippingMethods} />
                 ) : view === 'account' ? (
                     <Account />
                 ) : view === 'checkout' ? (
-                    <Checkout cart={cart} />
+                    <Checkout cart={cart} shippingMethods={shippingMethods} />
                 ) : view === 'about' || view === 'contact' || view === 'terms' ? (
                     <StaticPage type={view} />
                 ) : (
@@ -604,16 +612,23 @@ function Account() {
     );
 }
 
-function Checkout({ cart }: any) {
+function Checkout({ cart, shippingMethods }: { cart: CardProduct[]; shippingMethods: ShippingMethod[] }) {
+    const [selectedShipping, setSelectedShipping] = useState(shippingMethods[0]?.code || '');
+    const shipping = shippingMethods.find((method) => method.code === selectedShipping);
+    const subtotal = cart.reduce((sum, product) => sum + (product.sale || product.price), 0);
     return (
         <main className="page checkout">
             <h1>تکمیل سفارش</h1>
             <div className="checkout-grid">
                 <form>
                     <h3>روش ارسال</h3>
-                    <label><input type="radio" name="ship" defaultChecked /> پیک شهری مشهد</label>
-                    <label><input type="radio" name="ship" /> دریافت حضوری</label>
-                    <label><input type="radio" name="ship" /> پست پیشتاز</label>
+                    {shippingMethods.length ? shippingMethods.map((method) => (
+                        <label className="shipping-choice" key={method.code}>
+                            <input type="radio" name="ship" value={method.code} checked={selectedShipping === method.code} onChange={() => setSelectedShipping(method.code)} />
+                            <span><b>{method.name}</b><small>{method.description}</small></span>
+                            <strong>{Number(method.cost) === 0 ? 'رایگان' : toman(Number(method.cost))}</strong>
+                        </label>
+                    )) : <p>در حال حاضر روش ارسال فعالی تعریف نشده است.</p>}
                     <h3>روش پرداخت</h3>
                     <label><input type="radio" name="pay" defaultChecked /> پرداخت آنلاین</label>
                     <label><input type="radio" name="pay" /> کارت به کارت و ارسال تصویر رسید</label>
@@ -623,7 +638,8 @@ function Checkout({ cart }: any) {
                 <aside>
                     <h3>خلاصه سفارش</h3>
                     <p>{cart.length} کالا در سبد شما</p>
-                    <b>{toman(cart.reduce((sum: number, p: CardProduct) => sum + (p.sale || p.price), 0))}</b>
+                    <p>هزینه ارسال: {shipping ? (Number(shipping.cost) ? toman(Number(shipping.cost)) : 'رایگان') : '—'}</p>
+                    <b>{toman(subtotal + Number(shipping?.cost || 0))}</b>
                 </aside>
             </div>
         </main>
@@ -635,15 +651,22 @@ function Admin({
     articles,
     categories,
     brands,
+    accounting,
+    orders,
+    shippingMethods,
 }: {
     products: Product[];
     articles: Article[];
     categories: Category[];
     brands: Brand[];
+    accounting: Accounting;
+    orders: Order[];
+    shippingMethods: ShippingMethod[];
 }) {
     const { props } = usePage<any>();
     const [previews, setPreviews] = useState<string[]>([]);
     const [articlePreview, setArticlePreview] = useState<string | null>(null);
+    const [tab, setTab] = useState<'accounting' | 'products' | 'articles' | 'shipping'>('accounting');
     const { data, setData, post, processing, errors, reset } = useForm<AdminForm>({
         name: '',
         sku: '',
@@ -704,6 +727,12 @@ function Admin({
         <main className="page admin">
             <h1>پنل مدیریت</h1>
             {props.flash?.status && <div className="admin-status">{props.flash.status}</div>}
+            <div className="admin-tabs">
+                <button className={tab === 'accounting' ? 'active' : ''} onClick={() => setTab('accounting')}>حسابداری مدیریت</button>
+                <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}>مدیریت محصولات</button>
+                <button className={tab === 'articles' ? 'active' : ''} onClick={() => setTab('articles')}>مدیریت مقالات</button>
+                <button className={tab === 'shipping' ? 'active' : ''} onClick={() => setTab('shipping')}>مدیریت ارسال</button>
+            </div>
             <div className="dashboard">
                 <div><b>{new Intl.NumberFormat('fa-IR').format(products.length)}</b><small>محصول ثبت‌شده</small></div>
                 <div><b>{new Intl.NumberFormat('fa-IR').format(products.filter((p) => p.stock > 0).length)}</b><small>محصول موجود</small></div>
@@ -711,7 +740,7 @@ function Admin({
                 <div><b>{new Intl.NumberFormat('fa-IR').format(categories.length + brands.length)}</b><small>دسته و برند</small></div>
             </div>
             <div className="admin-grid">
-                <section>
+                <section className={tab === 'products' ? '' : 'admin-hidden'}>
                     <h2>افزودن محصول و SEO</h2>
                     <form className="admin-form" onSubmit={submit}>
                         {Object.keys(errors).length > 0 && (
@@ -805,7 +834,7 @@ function Admin({
                         </button>
                     </form>
                 </section>
-                <section>
+                <section className={tab === 'articles' ? '' : 'admin-hidden'}>
                     <h2>افزودن مقاله</h2>
                     <form className="admin-form" onSubmit={submitArticle}>
                         {Object.keys(articleForm.errors).length > 0 && <div className="form-error-box">لطفاً خطاهای مقاله را بررسی کنید.</div>}
@@ -844,48 +873,141 @@ function Admin({
                 </section>
             </div>
             <div className="admin-grid admin-lists">
-                <section>
-                    <h2>محصولات اخیر</h2>
+                <section className={tab === 'products' ? '' : 'admin-hidden'}>
+                    <h2>مدیریت همه محصولات</h2>
                     <AdminProducts products={products} />
                 </section>
-                <section>
-                    <h2>مقالات اخیر</h2>
+                <section className={tab === 'articles' ? '' : 'admin-hidden'}>
+                    <h2>مدیریت همه مقالات</h2>
                     <AdminArticles articles={articles} />
                 </section>
             </div>
+            {tab === 'accounting' && <AccountingPanel accounting={accounting} orders={orders} />}
+            {tab === 'shipping' && <ShippingPanel methods={shippingMethods} />}
         </main>
     );
 }
 
 function AdminProducts({ products }: { products: Product[] }) {
     return (
-        <div className="admin-products">
-            {products.length ? products.map((product) => (
-                <article key={product.id}>
-                    {product.main_image ? <img src={product.main_image} alt={product.name} /> : <div />}
-                    <span>
-                        <b>{product.name}</b>
-                        <small>{product.sku || 'بدون SKU'} · موجودی {new Intl.NumberFormat('fa-IR').format(product.stock)}</small>
-                    </span>
-                </article>
-            )) : <p>هنوز محصولی ثبت نشده است.</p>}
+        <div className="admin-manage-list">
+            {products.length ? products.map((product) => <ProductManager key={product.id} product={product} />) : <p>هنوز محصولی ثبت نشده است.</p>}
         </div>
+    );
+}
+
+function ProductManager({ product }: { product: Product }) {
+    const form = useForm({
+        name: product.name,
+        price: String(product.price || 0),
+        sale_price: product.sale_price ? String(product.sale_price) : '',
+        stock: String(product.stock || 0),
+        is_active: product.is_active !== false,
+    });
+
+    return (
+        <form className="manage-row" onSubmit={(event) => { event.preventDefault(); form.patch(route('admin.products.update', product.id), { preserveScroll: true }); }}>
+            <div className="manage-heading">
+                {product.main_image ? <img src={product.main_image} alt={product.name} /> : <div className="manage-placeholder" />}
+                <span><b>{product.name}</b><small>{product.sku || 'بدون SKU'}</small></span>
+            </div>
+            <input value={form.data.name} onChange={(event) => form.setData('name', event.target.value)} aria-label="نام محصول" />
+            <div className="admin-two">
+                <input value={form.data.price} onChange={(event) => form.setData('price', event.target.value)} inputMode="numeric" placeholder="قیمت" />
+                <input value={form.data.sale_price} onChange={(event) => form.setData('sale_price', event.target.value)} inputMode="numeric" placeholder="قیمت تخفیفی" />
+            </div>
+            <div className="admin-two">
+                <input value={form.data.stock} onChange={(event) => form.setData('stock', event.target.value)} inputMode="numeric" placeholder="موجودی" />
+                <label className="admin-check"><input type="checkbox" checked={form.data.is_active} onChange={(event) => form.setData('is_active', event.target.checked)} /> نمایش در فروشگاه</label>
+            </div>
+            {Object.keys(form.errors).length > 0 && <small className="form-error">مقادیر محصول را بررسی کنید.</small>}
+            <div className="manage-actions">
+                <button className="primary" disabled={form.processing}>ذخیره تغییرات</button>
+                <button type="button" className="danger-button" onClick={() => { if (window.confirm(`محصول «${product.name}» حذف شود؟`)) router.delete(route('admin.products.destroy', product.id), { preserveScroll: true }); }}>حذف محصول</button>
+            </div>
+        </form>
     );
 }
 
 function AdminArticles({ articles }: { articles: Article[] }) {
     return (
-        <div className="admin-products">
-            {articles.length ? articles.map((article) => (
-                <article key={article.id}>
-                    {article.image ? <img src={article.image} alt={article.title} /> : <div />}
-                    <span>
-                        <b>{article.title}</b>
-                        <small>{article.topic || 'بدون موضوع'} · {article.tags?.map((tag) => `#${tag.name}`).join(' ') || 'بدون تگ'}</small>
-                    </span>
-                </article>
-            )) : <p>هنوز مقاله‌ای ثبت نشده است.</p>}
+        <div className="admin-manage-list">
+            {articles.length ? articles.map((article) => <ArticleManager key={article.id} article={article} />) : <p>هنوز مقاله‌ای ثبت نشده است.</p>}
         </div>
+    );
+}
+
+function ArticleManager({ article }: { article: Article }) {
+    const form = useForm({ title: article.title, topic: article.topic || '', excerpt: article.excerpt || '', body: article.body || '', is_published: article.is_published !== false });
+
+    return (
+        <form className="manage-row" onSubmit={(event) => { event.preventDefault(); form.patch(route('admin.articles.update', article.id), { preserveScroll: true }); }}>
+            <div className="manage-heading">
+                {article.image ? <img src={article.image} alt={article.title} /> : <div className="manage-placeholder" />}
+                <span><b>{article.title}</b><small>{article.tags?.map((tag) => `#${tag.name}`).join(' ') || 'بدون تگ'}</small></span>
+            </div>
+            <input value={form.data.title} onChange={(event) => form.setData('title', event.target.value)} placeholder="عنوان" />
+            <input value={form.data.topic} onChange={(event) => form.setData('topic', event.target.value)} placeholder="موضوع" />
+            <textarea value={form.data.excerpt} onChange={(event) => form.setData('excerpt', event.target.value)} placeholder="خلاصه" />
+            <textarea value={form.data.body} onChange={(event) => form.setData('body', event.target.value)} placeholder="متن مقاله" />
+            <label className="admin-check"><input type="checkbox" checked={form.data.is_published} onChange={(event) => form.setData('is_published', event.target.checked)} /> مقاله منتشر باشد</label>
+            {Object.keys(form.errors).length > 0 && <small className="form-error">عنوان، موضوع و متن مقاله را بررسی کنید.</small>}
+            <div className="manage-actions">
+                <button className="primary" disabled={form.processing}>ذخیره تغییرات</button>
+                <button type="button" className="danger-button" onClick={() => { if (window.confirm(`مقاله «${article.title}» حذف شود؟`)) router.delete(route('admin.articles.destroy', article.id), { preserveScroll: true }); }}>حذف مقاله</button>
+            </div>
+        </form>
+    );
+}
+
+function AccountingPanel({ accounting, orders }: { accounting: Accounting; orders: Order[] }) {
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', processing: 'پرداخت‌شده / در حال آماده‌سازی', pending_review: 'بررسی رسید', completed: 'تکمیل‌شده', cancelled: 'لغوشده', failed: 'ناموفق', refunded: 'مرجوع‌شده' };
+    return (
+        <section className="admin-panel">
+            <div className="accounting-cards">
+                <div><small>وجه واردشده به حساب</small><b>{toman(Number(accounting.received || 0))}</b></div>
+                <div><small>درآمد فروش محصولات</small><b>{toman(Number(accounting.product_revenue || 0))}</b></div>
+                <div><small>هزینه ارسال دریافتی</small><b>{toman(Number(accounting.shipping_revenue || 0))}</b></div>
+                <div><small>تعداد کالای فروخته‌شده</small><b>{new Intl.NumberFormat('fa-IR').format(accounting.sold_items || 0)}</b></div>
+                <div><small>سفارش پرداخت‌شده</small><b>{new Intl.NumberFormat('fa-IR').format(accounting.paid_orders || 0)}</b></div>
+                <div><small>در انتظار پرداخت/بررسی</small><b>{new Intl.NumberFormat('fa-IR').format(accounting.pending_orders || 0)}</b></div>
+            </div>
+            <h2>سفارش‌ها و وضعیت مالی</h2>
+            <div className="orders-table">
+                {orders.length ? orders.map((order) => (
+                    <article key={order.id}>
+                        <span><b>سفارش {order.number}</b><small>{order.user?.first_name || order.user?.phone_number || 'کاربر'} · {new Intl.DateTimeFormat('fa-IR').format(new Date(order.created_at))}</small></span>
+                        <span><b>{toman(Number(order.total))}</b><small>{order.items?.reduce((sum, item) => sum + Number(item.quantity), 0) || 0} کالا</small></span>
+                        <select value={order.status} onChange={(event) => router.patch(route('admin.orders.status', order.id), { status: event.target.value }, { preserveScroll: true })}>
+                            {Object.entries(labels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                        </select>
+                    </article>
+                )) : <p>هنوز سفارشی ثبت نشده است؛ آمار مالی صفر و واقعی است.</p>}
+            </div>
+        </section>
+    );
+}
+
+function ShippingPanel({ methods }: { methods: ShippingMethod[] }) {
+    const form = useForm<{ methods: ShippingMethod[] }>({ methods: methods.map((method) => ({ ...method, cost: Number(method.cost) })) });
+    const updateMethod = (index: number, values: Partial<ShippingMethod>) => form.setData('methods', form.data.methods.map((method, itemIndex) => itemIndex === index ? { ...method, ...values } : method));
+    return (
+        <section className="admin-panel">
+            <h2>روش و هزینه ارسال</h2>
+            <p className="panel-help">روش‌های فعال همراه با توضیح و هزینه در صفحه تسویه‌حساب به کاربر نشان داده می‌شوند.</p>
+            <form className="shipping-admin" onSubmit={(event) => { event.preventDefault(); form.put(route('admin.shipping.update'), { preserveScroll: true }); }}>
+                {form.data.methods.map((method, index) => (
+                    <div className="shipping-admin-row" key={method.code}>
+                        <label className="admin-check"><input type="checkbox" checked={method.is_active} onChange={(event) => updateMethod(index, { is_active: event.target.checked })} /> فعال</label>
+                        <input value={method.name} onChange={(event) => updateMethod(index, { name: event.target.value })} placeholder="نام روش ارسال" />
+                        <input value={method.description} onChange={(event) => updateMethod(index, { description: event.target.value })} placeholder="توضیح برای مشتری" />
+                        <label><span>هزینه (تومان)</span><input value={method.cost} onChange={(event) => updateMethod(index, { cost: Number(event.target.value) })} inputMode="numeric" /></label>
+                    </div>
+                ))}
+                {Object.keys(form.errors).length > 0 && <small className="form-error">اطلاعات روش‌های ارسال را بررسی کنید.</small>}
+                <button className="primary" disabled={form.processing}>ذخیره تنظیمات ارسال</button>
+            </form>
+        </section>
     );
 }
 

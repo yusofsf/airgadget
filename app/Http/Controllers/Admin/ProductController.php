@@ -9,10 +9,41 @@ use App\Models\Product;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
+    public function update(Request $request, Product $product): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'price' => ['required', 'numeric', 'min:0'],
+            'sale_price' => ['nullable', 'numeric', 'min:0'],
+            'stock' => ['required', 'integer', 'min:0'],
+            'is_active' => ['required', 'boolean'],
+        ]);
+
+        $product->update($validated);
+
+        return back()->with('status', "محصول «{$product->name}» ویرایش شد.");
+    }
+
+    public function destroy(Product $product): RedirectResponse
+    {
+        $name = $product->name;
+        $paths = $product->images()->pluck('path')
+            ->push($product->main_image)
+            ->filter()
+            ->map(fn ($path) => Str::after($path, '/storage/'))
+            ->unique()
+            ->all();
+        $product->delete();
+        Storage::disk('public')->delete($paths);
+
+        return back()->with('status', "محصول «{$name}» حذف شد.");
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([

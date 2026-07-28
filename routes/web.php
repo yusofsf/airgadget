@@ -1,6 +1,8 @@
 <?php
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\ShippingController;
 use App\Http\Controllers\StoreController;
 use Illuminate\Support\Facades\Route;
 Route::get('/',[StoreController::class,'home'])->name('home');
@@ -11,5 +13,5 @@ Route::get('/articles/{article:slug}',[StoreController::class,'article'])->name(
 Route::get('/about-us',[StoreController::class,'page'])->defaults('page','about')->name('about');
 Route::get('/contact-us',[StoreController::class,'page'])->defaults('page','contact')->name('contact');
 Route::get('/terms',[StoreController::class,'page'])->defaults('page','terms')->name('terms');
-Route::middleware('auth')->group(function(){Route::get('/account',[StoreController::class,'account'])->name('account');Route::get('/checkout',[StoreController::class,'checkout'])->name('checkout');Route::get('/admin',[StoreController::class,'admin'])->middleware('can:manage-store')->name('admin');Route::post('/admin/products',[ProductController::class,'store'])->middleware('can:manage-store')->name('admin.products.store');Route::post('/admin/articles',[ArticleController::class,'store'])->middleware('can:manage-store')->name('admin.articles.store');});
+Route::middleware('auth')->group(function(){Route::get('/account',[StoreController::class,'account'])->name('account');Route::get('/checkout',[StoreController::class,'checkout'])->name('checkout');Route::middleware('can:manage-store')->group(function(){Route::get('/admin',[StoreController::class,'admin'])->name('admin');Route::post('/admin/products',[ProductController::class,'store'])->name('admin.products.store');Route::patch('/admin/products/{product}',[ProductController::class,'update'])->name('admin.products.update');Route::delete('/admin/products/{product}',[ProductController::class,'destroy'])->name('admin.products.destroy');Route::post('/admin/articles',[ArticleController::class,'store'])->name('admin.articles.store');Route::patch('/admin/articles/{article}',[ArticleController::class,'update'])->name('admin.articles.update');Route::delete('/admin/articles/{article}',[ArticleController::class,'destroy'])->name('admin.articles.destroy');Route::put('/admin/shipping',[ShippingController::class,'update'])->name('admin.shipping.update');Route::patch('/admin/orders/{order}/status',[OrderController::class,'updateStatus'])->name('admin.orders.status');});});
 require __DIR__.'/auth.php';

@@ -8,9 +8,40 @@ use App\Models\Tag;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
 
 class ArticleController extends Controller
 {
+    public function update(Request $request, Article $article): RedirectResponse
+    {
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+            'topic' => ['required', 'string', 'max:255'],
+            'excerpt' => ['nullable', 'string', 'max:1000'],
+            'body' => ['required', 'string'],
+            'is_published' => ['required', 'boolean'],
+        ]);
+
+        $validated['published_at'] = $validated['is_published']
+            ? ($article->published_at ?: now())
+            : null;
+        $article->update($validated);
+
+        return back()->with('status', "مقاله «{$article->title}» ویرایش شد.");
+    }
+
+    public function destroy(Article $article): RedirectResponse
+    {
+        $title = $article->title;
+        $image = $article->image ? Str::after($article->image, '/storage/') : null;
+        $article->delete();
+        if ($image) {
+            Storage::disk('public')->delete($image);
+        }
+
+        return back()->with('status', "مقاله «{$title}» حذف شد.");
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
