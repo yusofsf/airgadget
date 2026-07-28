@@ -95,7 +95,7 @@ type ArticleForm = {
 };
 
 const supportPhone = '09205850190';
-const storeAddress = 'عبدالمطلب 35';
+const storeAddress = 'خراسان رضوی، مشهد، عبدالمطلب ۳۵';
 const siteTitle = 'ایرگجت | لوازم جانبی موبایل';
 const siteDescription = 'خرید مطمئن لوازم جانبی موبایل، ایرپاد و گجت با ارسال سریع از ایرگجت مشهد';
 const toman = (n: number) => new Intl.NumberFormat('fa-IR').format(n) + ' تومان';
@@ -731,7 +731,7 @@ function Invoice({ order, shipping }: { order: Order; shipping?: ShippingMethod 
                     <p><span>ارسال ({shipping?.name || order.shipping_method})</span><b>{Number(order.shipping_cost || 0) ? toman(Number(order.shipping_cost)) : 'رایگان'}</b></p>
                     <p className="grand"><span>مبلغ قابل پرداخت</span><b>{toman(Number(order.total))}</b></p>
                 </div>
-                <footer>ایرگجت ـ مشهد، عبدالمطلب ۳۵ ـ پشتیبانی {supportPhone}</footer>
+                <footer>ایرگجت ـ خراسان رضوی، مشهد، عبدالمطلب ۳۵ ـ پشتیبانی {supportPhone}</footer>
             </section>
         </main>
     );
