@@ -336,6 +336,7 @@ export default function Storefront({
                         <Link className="account-entry" href={auth?.user ? (auth.user.is_admin ? '/admin' : '/account') : '/login'}>
                             {auth?.user ? 'حساب من' : 'ورود و ثبت‌نام'}
                         </Link>
+                        {auth?.user && <button className="header-logout" type="button" onClick={() => router.post(route('logout'))}>خروج</button>}
                         <button className="icon basket" aria-label="سبد خرید" onClick={() => setPanel('cart')}>
                             <svg viewBox="0 0 24 24" aria-hidden="true">
                                 <path d="M3 4h2l2.1 9.1a2 2 0 0 0 2 1.55h7.85a2 2 0 0 0 1.94-1.52L20.3 7H6" />
@@ -1240,8 +1241,9 @@ function Admin({
                         <input value={data.meta_keywords} onChange={(event) => setData('meta_keywords', event.target.value)} placeholder="کلمات کلیدی محصول، جداشده با ویرگول" />
                         <input value={data.tags} onChange={(event) => setData('tags', event.target.value)} placeholder="تگ‌های محصول با ویرگول، مثل انکر، هندزفری" />
                         <label className="upload-box">
-                            <span>انتخاب و آپلود عکس محصول</span>
+                            <span>انتخاب تصاویر محصول</span>
                             <small>می‌توانید چند عکس انتخاب کنید؛ بعد یکی را به عنوان عکس اصلی بزنید.</small>
+                            <span className="file-picker-button">انتخاب فایل‌ها</span>
                             <input
                                 type="file"
                                 accept="image/png,image/jpeg,image/webp"
@@ -1305,6 +1307,7 @@ function Admin({
                         <label className="upload-box">
                             <span>عکس اصلی مقاله</span>
                             <small>این عکس در لیست مقاله‌ها و Open Graph استفاده می‌شود.</small>
+                            <span className="file-picker-button">انتخاب تصویر</span>
                             <input
                                 type="file"
                                 accept="image/png,image/jpeg,image/webp"
@@ -1531,6 +1534,7 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                     <label className="upload-box">
                         <span>افزودن تصاویر جدید</span>
                         <small>فرمت JPG، PNG یا WebP و حداکثر حجم هر فایل ۱۰ مگابایت</small>
+                        <span className="file-picker-button">انتخاب فایل‌ها</span>
                         <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={async (event) => {
                             previews.forEach((preview) => URL.revokeObjectURL(preview));
                             setPreparingImages(true);
