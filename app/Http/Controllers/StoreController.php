@@ -15,7 +15,7 @@ class StoreController extends Controller {
  public function articles(){return Inertia::render('Storefront',['view'=>'articles','articles'=>Article::with('tags')->where('is_published',true)->latest('published_at')->paginate(12),'topics'=>Article::where('is_published',true)->whereNotNull('topic')->select('topic')->distinct()->orderBy('topic')->pluck('topic'),'tags'=>Tag::has('articles')->orderBy('name')->get(['id','name','slug'])]);}
  public function article(Article $article){abort_unless($article->is_published,404);return Inertia::render('Storefront',['view'=>'article','article'=>$article->load('tags')]);}
  public function page(string $page){return Inertia::render('Storefront',['view'=>$page]);}
- public function account(){return Inertia::render('Storefront',['view'=>'account']);}
+ public function account(){return Inertia::render('Storefront',['view'=>'account','orders'=>auth()->user()->orders()->with('items')->latest()->get()]);}
  public function checkout(){return Inertia::render('Storefront',['view'=>'checkout','shippingMethods'=>collect(StoreSetting::shippingMethods())->where('is_active',true)->values()]);}
  public function admin(){
   $paid=Order::whereIn('status',['processing','completed']);

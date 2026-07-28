@@ -1,5 +1,5 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 type Brand = { id: number; name: string };
 type Category = { id: number; name: string; slug?: string; products_count?: number };
@@ -128,7 +128,10 @@ export default function Storefront({
     orders = [],
 }: any) {
     const [search, setSearch] = useState('');
-    const [cart, setCart] = useState<CardProduct[]>([]);
+    const [cart, setCart] = useState<CardProduct[]>(() => {
+        if (typeof window === 'undefined') return [];
+        try { return JSON.parse(window.localStorage.getItem('airgadget-cart') || '[]'); } catch { return []; }
+    });
     const [fav, setFav] = useState<number[]>([]);
     const [panel, setPanel] = useState<'cart' | 'account' | null>(null);
     const [filter, setFilter] = useState('');
@@ -144,6 +147,9 @@ export default function Storefront({
                 .filter((p) => !filter || (filter === 'sale' ? !!p.sale : filter === 'stock' ? p.stock : p.brand === filter)),
         [list, search, filter],
     );
+    useEffect(() => {
+        window.localStorage.setItem('airgadget-cart', JSON.stringify(cart));
+    }, [cart]);
     const section =
         view === 'shop'
             ? 'فروشگاه'
@@ -269,9 +275,9 @@ export default function Storefront({
                 ) : view === 'admin' ? (
                     <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} accounting={accounting} orders={orders} shippingMethods={shippingMethods} />
                 ) : view === 'account' ? (
-                    <Account />
+                    <Account orders={orders} />
                 ) : view === 'checkout' ? (
-                    <Checkout cart={cart} shippingMethods={shippingMethods} />
+                    <Checkout cart={cart} shippingMethods={shippingMethods} clearCart={() => setCart([])} />
                 ) : view === 'about' || view === 'contact' || view === 'terms' ? (
                     <StaticPage type={view} />
                 ) : (
@@ -586,10 +592,13 @@ function StaticPage({ type }: any) {
     );
 }
 
-function Account() {
+function Account({ orders }: { orders: Order[] }) {
+    const { props } = usePage<any>();
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', processing: 'در حال آماده‌سازی', pending_review: 'در انتظار بررسی رسید', completed: 'تکمیل‌شده', cancelled: 'لغوشده', failed: 'ناموفق', refunded: 'مرجوع‌شده' };
     return (
         <main className="page account">
             <h1>حساب کاربری من</h1>
+            {props.flash?.status && <div className="admin-status">{props.flash.status}</div>}
             <div className="account-grid">
                 <aside>
                     <b>داشبورد</b>
@@ -602,9 +611,14 @@ function Account() {
                     <h2>سلام، خوش آمدید</h2>
                     <p>از این بخش می‌توانید سفارش‌ها، آدرس‌ها و فاکتورهای خود را مدیریت کنید.</p>
                     <div className="stats">
-                        <b>۰<small>سفارش</small></b>
+                        <b>{new Intl.NumberFormat('fa-IR').format(orders.length)}<small>سفارش</small></b>
                         <b>۰<small>علاقه‌مندی</small></b>
                         <b>۰<small>آدرس</small></b>
+                    </div>
+                    <div className="customer-orders">
+                        {orders.length ? orders.map((order) => (
+                            <article key={order.id}><span><b>سفارش {order.number}</b><small>{labels[order.status] || order.status}</small></span><strong>{toman(Number(order.total))}</strong></article>
+                        )) : <p>هنوز سفارشی ثبت نکرده‌اید.</p>}
                     </div>
                 </section>
             </div>
@@ -612,28 +626,34 @@ function Account() {
     );
 }
 
-function Checkout({ cart, shippingMethods }: { cart: CardProduct[]; shippingMethods: ShippingMethod[] }) {
-    const [selectedShipping, setSelectedShipping] = useState(shippingMethods[0]?.code || '');
-    const shipping = shippingMethods.find((method) => method.code === selectedShipping);
+function Checkout({ cart, shippingMethods, clearCart }: { cart: CardProduct[]; shippingMethods: ShippingMethod[]; clearCart: () => void }) {
+    const quantities = Object.values(cart.reduce<Record<number, { product_id: number; quantity: number }>>((items, product) => {
+        items[product.id] = items[product.id] || { product_id: product.id, quantity: 0 };
+        items[product.id].quantity++;
+        return items;
+    }, {}));
+    const form = useForm({ shipping_method: shippingMethods[0]?.code || '', payment_method: 'card_to_card', address: '', items: quantities });
+    const shipping = shippingMethods.find((method) => method.code === form.data.shipping_method);
     const subtotal = cart.reduce((sum, product) => sum + (product.sale || product.price), 0);
     return (
         <main className="page checkout">
             <h1>تکمیل سفارش</h1>
             <div className="checkout-grid">
-                <form>
+                <form onSubmit={(event) => { event.preventDefault(); form.post(route('checkout.store'), { onSuccess: clearCart }); }}>
                     <h3>روش ارسال</h3>
                     {shippingMethods.length ? shippingMethods.map((method) => (
                         <label className="shipping-choice" key={method.code}>
-                            <input type="radio" name="ship" value={method.code} checked={selectedShipping === method.code} onChange={() => setSelectedShipping(method.code)} />
+                            <input type="radio" name="ship" value={method.code} checked={form.data.shipping_method === method.code} onChange={() => form.setData('shipping_method', method.code)} />
                             <span><b>{method.name}</b><small>{method.description}</small></span>
                             <strong>{Number(method.cost) === 0 ? 'رایگان' : toman(Number(method.cost))}</strong>
                         </label>
                     )) : <p>در حال حاضر روش ارسال فعالی تعریف نشده است.</p>}
                     <h3>روش پرداخت</h3>
-                    <label><input type="radio" name="pay" defaultChecked /> پرداخت آنلاین</label>
-                    <label><input type="radio" name="pay" /> کارت به کارت و ارسال تصویر رسید</label>
-                    <input placeholder="آدرس کامل" defaultValue={storeAddress} />
-                    <button className="primary">ثبت سفارش</button>
+                    <label><input type="radio" name="pay" checked={form.data.payment_method === 'card_to_card'} onChange={() => form.setData('payment_method', 'card_to_card')} /> کارت به کارت و بررسی پرداخت</label>
+                    <label><input type="radio" name="pay" checked={form.data.payment_method === 'zarinpal'} onChange={() => form.setData('payment_method', 'zarinpal')} /> پرداخت آنلاین</label>
+                    {form.data.shipping_method !== 'pickup' && <input placeholder="آدرس کامل گیرنده" value={form.data.address} onChange={(event) => form.setData('address', event.target.value)} />}
+                    {Object.keys(form.errors).length > 0 && <div className="form-error-box">{Object.values(form.errors)[0]}</div>}
+                    <button className="primary" disabled={form.processing || cart.length === 0 || !form.data.shipping_method}>{form.processing ? 'در حال ثبت...' : 'ثبت سفارش'}</button>
                 </form>
                 <aside>
                     <h3>خلاصه سفارش</h3>
