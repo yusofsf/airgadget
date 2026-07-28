@@ -7,6 +7,7 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Tag;
+use App\Support\PersianSlug;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -56,11 +57,21 @@ class ProductController extends Controller
     public function image(string $filename): BinaryFileResponse
     {
         abort_unless((bool) preg_match('/\A[a-zA-Z0-9._-]+\z/', $filename), 404);
-        $path = "products/{$filename}";
-        abort_unless(Storage::disk('public')->exists($path), 404);
+
+        $disk = Storage::disk('product_images');
+        $path = $filename;
+
+        // Keep images uploaded before the public uploads directory was added
+        // available while new uploads are written to the host's public folder.
+        if (! $disk->exists($path)) {
+            $disk = Storage::disk('public');
+            $path = "products/{$filename}";
+        }
+
+        abort_unless($disk->exists($path), 404);
 
         return response()->file(
-            Storage::disk('public')->path($path),
+            $disk->path($path),
             ['Cache-Control' => 'public, max-age=31536000, immutable']
         );
     }
@@ -128,10 +139,10 @@ class ProductController extends Controller
                 ->whereIn('id', $validated['remove_image_ids'] ?? [])
                 ->get();
             $product->images()->whereKey($removedImages->pluck('id'))->delete();
-            Storage::disk('public')->delete(
+            $this->deleteProductImages(
                 $removedImages->pluck('path')->map(fn ($path) => $this->storedImagePath($path))->filter()->all()
             );
-            Storage::disk('public')->delete(
+            $this->deleteProductImages(
                 $removedLegacyPaths->map(fn ($path) => $this->storedImagePath($path))->filter()->all()
             );
 
@@ -184,7 +195,7 @@ class ProductController extends Controller
             ->unique()
             ->all();
         $product->delete();
-        Storage::disk('public')->delete($paths);
+        $this->deleteProductImages($paths);
 
         return redirect()->route('admin')->with('status', "محصول «{$name}» حذف شد.");
     }
@@ -310,24 +321,7 @@ class ProductController extends Controller
 
     private function uniqueSlug(string $model, string $value): string
     {
-        $base = $this->slugValue($value) ?: Str::random(8);
-        $slug = $base;
-        $counter = 2;
-
-        while ($model::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$counter}";
-            $counter++;
-        }
-
-        return $slug;
-    }
-
-    private function slugValue(string $value): string
-    {
-        $value = str_replace(['ي', 'ى', 'ك'], ['ی', 'ی', 'ک'], trim(Str::lower($value)));
-        $value = preg_replace('/[^\p{Arabic}\p{L}\p{N}]+/u', '-', $value) ?: '';
-
-        return trim($value, '-');
+        return PersianSlug::unique($model, $value);
     }
 
     private function uniqueSku(string $value): string
@@ -358,19 +352,35 @@ class ProductController extends Controller
         return null;
     }
 
+    private function deleteProductImages(array $paths): void
+    {
+        $filenames = collect($paths)
+            ->filter()
+            ->map(fn ($path) => basename((string) $path))
+            ->filter(fn ($filename) => (bool) preg_match('/\A[a-zA-Z0-9._-]+\z/', $filename))
+            ->unique()
+            ->values()
+            ->all();
+
+        Storage::disk('product_images')->delete($filenames);
+        Storage::disk('public')->delete(array_map(fn ($filename) => "products/{$filename}", $filenames));
+    }
+
     private function storeProductImage(UploadedFile $image): string
     {
-        $disk = Storage::disk('public');
-        if (! $disk->exists('products') && ! $disk->makeDirectory('products')) {
-            throw ValidationException::withMessages([
-                'images' => 'پوشه تصاویر محصول روی سرور قابل نوشتن نیست.',
-            ]);
-        }
+        try {
+            $disk = Storage::disk('product_images');
+            $filename = Str::uuid().'.'.Str::lower($image->extension());
+            $storedPath = $disk->putFileAs('', $image, $filename);
 
-        $storedPath = $image->store('products', 'public');
-        if (! is_string($storedPath) || $storedPath === '') {
+            if (! is_string($storedPath) || $storedPath === '' || ! $disk->exists($storedPath)) {
+                throw new \RuntimeException('The uploaded product image could not be verified on disk.');
+            }
+        } catch (\Throwable $exception) {
+            report($exception);
+
             throw ValidationException::withMessages([
-                'images' => 'ذخیره تصویر روی سرور انجام نشد؛ دسترسی پوشه storage را بررسی کنید.',
+                'image' => 'ذخیره تصویر روی هاست انجام نشد؛ دسترسی نوشتن پوشه public/uploads/products را بررسی کنید.',
             ]);
         }
 

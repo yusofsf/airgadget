@@ -44,6 +44,16 @@ return [
             'throw' => false,
         ],
 
+        // Product images live in a real public directory. This avoids relying on
+        // a storage symlink, which is commonly unavailable on shared hosting.
+        'product_images' => [
+            'driver' => 'local',
+            'root' => public_path('uploads/products'),
+            'url' => env('APP_URL').'/uploads/products',
+            'visibility' => 'public',
+            'throw' => true,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

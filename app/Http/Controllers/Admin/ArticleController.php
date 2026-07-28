@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\ArticleCategory;
 use App\Models\Tag;
+use App\Support\PersianSlug;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -114,43 +115,16 @@ class ArticleController extends Controller
 
     private function uniqueSlug(string $value): string
     {
-        $base = Str::slug($value) ?: Str::random(8);
-        $slug = $base;
-        $counter = 2;
-
-        while (Article::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$counter}";
-            $counter++;
-        }
-
-        return $slug;
+        return PersianSlug::unique(Article::class, $value);
     }
 
     private function uniqueTagSlug(string $value): string
     {
-        $base = Str::slug($value) ?: Str::random(8);
-        $slug = $base;
-        $counter = 2;
-
-        while (Tag::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$counter}";
-            $counter++;
-        }
-
-        return $slug;
+        return PersianSlug::unique(Tag::class, $value);
     }
 
     private function uniqueCategorySlug(string $value): string
     {
-        $base = Str::slug($value) ?: Str::random(8);
-        $slug = $base;
-        $counter = 2;
-
-        while (ArticleCategory::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$counter}";
-            $counter++;
-        }
-
-        return $slug;
+        return PersianSlug::unique(ArticleCategory::class, $value);
     }
 }

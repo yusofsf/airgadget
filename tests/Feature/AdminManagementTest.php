@@ -155,6 +155,7 @@ test('a product cannot be created without its main price', function () {
 
 test('admin can open the complete product editor and upload a visible main image', function () {
     Storage::fake('public');
+    Storage::fake('product_images');
     $admin = User::factory()->create(['is_admin' => true]);
     $category = Category::create(['name' => 'لوازم جانبی', 'slug' => 'accessories']);
     $product = Product::create([
@@ -190,7 +191,7 @@ test('admin can open the complete product editor and upload a visible main image
         ->and($product->main_image)->toStartWith('/product-images/');
 
     $separateUploadPath = 'products/'.basename($product->main_image);
-    Storage::disk('public')->assertExists($separateUploadPath);
+    Storage::disk('product_images')->assertExists(basename($separateUploadPath));
 
     $this->actingAs($admin)
         ->post(route('admin.products.update', $product), [
@@ -212,7 +213,7 @@ test('admin can open the complete product editor and upload a visible main image
         ->and($product->images)->toHaveCount(2);
 
     $storedPath = 'products/'.basename($product->main_image);
-    Storage::disk('public')->assertExists($storedPath);
+    Storage::disk('product_images')->assertExists(basename($storedPath));
     $this->get($product->main_image)
         ->assertOk()
         ->assertHeader('cache-control', 'immutable, max-age=31536000, public');
@@ -237,14 +238,14 @@ test('admin can open the complete product editor and upload a visible main image
     $replacementPath = 'products/'.basename($product->main_image);
     expect($product->images)->toHaveCount(1)
         ->and($product->main_image)->not->toBe('/product-images/'.basename($storedPath));
-    Storage::disk('public')->assertMissing($separateUploadPath);
-    Storage::disk('public')->assertMissing($storedPath);
-    Storage::disk('public')->assertExists($replacementPath);
+    Storage::disk('product_images')->assertMissing(basename($separateUploadPath));
+    Storage::disk('product_images')->assertMissing(basename($storedPath));
+    Storage::disk('product_images')->assertExists(basename($replacementPath));
 
     $this->actingAs($admin)
         ->delete(route('admin.products.destroy', $product))
         ->assertRedirect(route('admin'));
 
     $this->assertDatabaseMissing('products', ['id' => $product->id]);
-    Storage::disk('public')->assertMissing($replacementPath);
+    Storage::disk('product_images')->assertMissing(basename($replacementPath));
 });

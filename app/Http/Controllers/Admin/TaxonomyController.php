@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ArticleCategory;
 use App\Models\Tag;
+use App\Support\PersianSlug;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class TaxonomyController extends Controller
@@ -59,15 +59,6 @@ class TaxonomyController extends Controller
 
     private function uniqueSlug(string $model, string $value, ?int $ignoreId = null): string
     {
-        $base = Str::slug($value) ?: Str::random(8);
-        $slug = $base;
-        $counter = 2;
-
-        while ($model::where('slug', $slug)->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))->exists()) {
-            $slug = "{$base}-{$counter}";
-            $counter++;
-        }
-
-        return $slug;
+        return PersianSlug::unique($model, $value, $ignoreId);
     }
 }
