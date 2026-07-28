@@ -2,16 +2,18 @@ import { FormEventHandler } from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import GuestLayout from '@/Layouts/GuestLayout';
 
-type LoginMode = 'identify' | 'login' | 'setup';
+type LoginMode = 'identify' | 'login' | 'setup' | 'unregistered';
 
 export default function Login({
     status,
     mode = 'identify',
     phone = '',
+    registered = false,
 }: {
     status?: string;
     mode?: LoginMode;
     phone?: string;
+    registered?: boolean;
 }) {
     const form = useForm({
         phone,
@@ -27,13 +29,15 @@ export default function Login({
             form.post(route('login.identify'));
         } else if (mode === 'setup') {
             form.post(route('admin.setup-password'));
-        } else {
+        } else if (mode === 'login') {
             form.post(route('login'));
         }
     };
 
     const title = mode === 'setup'
         ? 'فعال‌سازی حساب مدیر'
+        : mode === 'unregistered'
+            ? 'شماره ثبت‌نام نشده است'
         : mode === 'login'
             ? 'خوش آمدید'
             : 'ورود به ایرگجت';
@@ -49,12 +53,15 @@ export default function Login({
                     {mode === 'setup'
                         ? 'این اولین ورود شماره مدیر است. یک رمز امن برای ورودهای بعدی بسازید.'
                         : mode === 'login'
-                            ? 'رمز عبور حساب را وارد کنید.'
+                            ? 'این شماره موبایل قبلاً ثبت‌نام شده است؛ رمز عبور حساب را وارد کنید.'
+                            : mode === 'unregistered'
+                                ? 'برای این شماره حسابی پیدا نشد. ابتدا ثبت‌نام کنید.'
                             : 'برای ادامه، شماره موبایل خود را وارد کنید.'}
                 </p>
             </div>
 
             {status && <div className="auth-status">{status}</div>}
+            {registered && mode === 'login' && <div className="auth-status">این شماره موبایل قبلاً ثبت‌نام شده است.</div>}
 
             <form className="auth-form" onSubmit={submit} dir="rtl">
                 <label htmlFor="phone">شماره موبایل</label>
@@ -74,7 +81,7 @@ export default function Login({
                 </div>
                 {form.errors.phone && <small className="auth-error">{form.errors.phone}</small>}
 
-                {mode !== 'identify' && (
+                {(mode === 'login' || mode === 'setup') && (
                     <>
                         <label htmlFor="password">{mode === 'setup' ? 'رمز عبور جدید' : 'رمز عبور'}</label>
                         <input
@@ -113,10 +120,12 @@ export default function Login({
                     </label>
                 )}
 
-                <button className="auth-submit" disabled={form.processing}>
+                {mode !== 'unregistered' && <button className="auth-submit" disabled={form.processing}>
                     {form.processing ? 'لطفاً صبر کنید…' : mode === 'identify' ? 'ادامه' : mode === 'setup' ? 'ساخت حساب مدیر' : 'ورود'}
-                </button>
+                </button>}
             </form>
+
+            {mode === 'unregistered' && <Link className="auth-submit auth-register-link" href={`/register?phone=${encodeURIComponent(phone)}`}>ثبت‌نام با این شماره</Link>}
 
             <p className="auth-back">حساب ندارید؟ <Link href="/register">ثبت‌نام کنید</Link></p>
             <p className="auth-back"><Link href="/">بازگشت به فروشگاه</Link></p>

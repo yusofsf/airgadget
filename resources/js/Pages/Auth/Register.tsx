@@ -2,8 +2,8 @@ import { FormEventHandler } from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import GuestLayout from '@/Layouts/GuestLayout';
 
-export default function Register() {
-    const form = useForm({ first_name: '', last_name: '', phone_number: '', email: '', password: '', password_confirmation: '' });
+export default function Register({ phone = '' }: { phone?: string }) {
+    const form = useForm({ first_name: '', last_name: '', phone_number: phone, email: '', password: '', password_confirmation: '' });
     const submit: FormEventHandler = (event) => {
         event.preventDefault();
         form.post(route('register'), { onFinish: () => form.reset('password', 'password_confirmation') });

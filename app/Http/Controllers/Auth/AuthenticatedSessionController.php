@@ -31,12 +31,15 @@ class AuthenticatedSessionController extends Controller
         $phone = $request->session()->get('login.phone');
         $adminPhone = Phone::normalize(config('admin.phone'));
         $userExists = $phone ? User::where('phone_number', $phone)->exists() : false;
-        $mode = ! $phone ? 'identify' : (($phone === $adminPhone && ! $userExists) ? 'setup' : 'login');
+        $mode = ! $phone
+            ? 'identify'
+            : (($phone === $adminPhone && ! $userExists) ? 'setup' : ($userExists ? 'login' : 'unregistered'));
 
         return Inertia::render('Auth/Login', [
             'status' => session('status'),
             'mode' => $mode,
             'phone' => $phone,
+            'registered' => $userExists,
         ]);
     }
 
