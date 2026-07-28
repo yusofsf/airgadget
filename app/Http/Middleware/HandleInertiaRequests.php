@@ -2,7 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\StoreSetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -17,7 +19,7 @@ class HandleInertiaRequests extends Middleware
     /**
      * Determine the current asset version.
      */
-    public function version(Request $request): string|null
+    public function version(Request $request): ?string
     {
         return parent::version($request);
     }
@@ -34,11 +36,14 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            'favoriteProductIds' => fn () => $request->user() && Schema::hasTable('favorite_product_user')
+                ? $request->user()->favoriteProducts()->pluck('products.id')
+                : [],
             'flash' => [
                 'status' => fn () => $request->session()->get('status'),
                 'createdProductId' => fn () => $request->session()->get('created_product_id'),
             ],
-            'shippingMethods' => fn () => \App\Models\StoreSetting::shippingMethods(),
+            'shippingMethods' => fn () => StoreSetting::shippingMethods(),
             'cardToCard' => [
                 'number' => config('services.card_to_card.card_number'),
                 'holder' => config('services.card_to_card.holder'),

@@ -141,8 +141,19 @@ class StoreController extends Controller
         $orders = $user && Schema::hasTable('orders') && Schema::hasTable('order_items')
             ? $user->orders()->with('items')->latest()->get()
             : collect();
+        $favorites = $user && Schema::hasTable('favorite_product_user')
+            ? $user->favoriteProducts()
+                ->with(['brand', 'images'])
+                ->where('is_active', true)
+                ->latest('favorite_product_user.created_at')
+                ->get()
+            : collect();
 
-        return Inertia::render('Storefront', ['view' => 'account', 'orders' => $orders]);
+        return Inertia::render('Storefront', [
+            'view' => 'account',
+            'orders' => $orders,
+            'favoriteProducts' => $favorites,
+        ]);
     }
 
     public function checkout()

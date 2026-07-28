@@ -1,3 +1,11 @@
+<IfModule php_module>
+    php_value upload_max_filesize 16M
+    php_value post_max_size 96M
+    php_value max_file_uploads 20
+    php_value max_execution_time 120
+    php_value max_input_time 120
+</IfModule>
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes

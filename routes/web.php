@@ -1,38 +1,42 @@
 <?php
+
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Admin\ArticleController;
-use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ShippingController;
 use App\Http\Controllers\Admin\TaxonomyController;
-use App\Http\Controllers\StoreController;
 use App\Http\Controllers\CheckoutController;
-use App\Http\Controllers\AccountController;
+use App\Http\Controllers\FavoriteController;
 use App\Http\Controllers\OrderTrackingController;
 use App\Http\Controllers\SitemapController;
+use App\Http\Controllers\StoreController;
 use Illuminate\Support\Facades\Route;
-Route::get('/',[StoreController::class,'home'])->name('home');
-Route::get('/shop',[StoreController::class,'shop'])->name('shop');
-Route::get('/categories/{category:slug}',[StoreController::class,'category'])->name('categories.show');
-Route::get('/products/{product:slug}',[StoreController::class,'product'])->name('products.show');
-Route::get('/product-images/{filename}',[ProductController::class,'image'])->where('filename','[A-Za-z0-9._-]+')->name('product-images.show');
-Route::get('/articles',[StoreController::class,'articles'])->name('articles.index');
-Route::get('/tags/{tag:slug}',[StoreController::class,'tag'])->name('tags.show');
-Route::get('/articles/tags/{tag:slug}',[StoreController::class,'tag']);
-Route::get('/articles/categories/{articleCategory:slug}',[StoreController::class,'articleCategory'])->name('article-categories.show');
-Route::get('/articles/{article:slug}',[StoreController::class,'article'])->name('articles.show');
-Route::get('/sitemap.xml',SitemapController::class)->name('sitemap');
-Route::get('/about-us',[StoreController::class,'page'])->defaults('page','about')->name('about');
-Route::get('/contact-us',[StoreController::class,'page'])->defaults('page','contact')->name('contact');
-Route::get('/terms',[StoreController::class,'page'])->defaults('page','terms')->name('terms');
-Route::get('/checkout',[StoreController::class,'checkout'])->name('checkout');
-Route::post('/checkout',[CheckoutController::class,'store'])->middleware('throttle:10,1')->name('checkout.store');
-Route::get('/orders/{order}/invoice/{token}',[CheckoutController::class,'invoice'])->name('orders.invoice');
-Route::get('/orders/{order}/invoice/{token}/pdf',[CheckoutController::class,'invoicePdf'])->name('orders.invoice.pdf');
-Route::get('/payments/zarinpal/callback/{order}/{token}',[CheckoutController::class,'callback'])->name('payments.zarinpal.callback');
-Route::get('/track-order',OrderTrackingController::class)->middleware('throttle:20,1')->name('orders.track');
+
+Route::get('/', [StoreController::class, 'home'])->name('home');
+Route::get('/shop', [StoreController::class, 'shop'])->name('shop');
+Route::get('/categories/{category:slug}', [StoreController::class, 'category'])->name('categories.show');
+Route::get('/products/{product:slug}', [StoreController::class, 'product'])->name('products.show');
+Route::get('/product-images/{filename}', [ProductController::class, 'image'])->where('filename', '[A-Za-z0-9._-]+')->name('product-images.show');
+Route::get('/articles', [StoreController::class, 'articles'])->name('articles.index');
+Route::get('/tags/{tag:slug}', [StoreController::class, 'tag'])->name('tags.show');
+Route::get('/articles/tags/{tag:slug}', [StoreController::class, 'tag']);
+Route::get('/articles/categories/{articleCategory:slug}', [StoreController::class, 'articleCategory'])->name('article-categories.show');
+Route::get('/articles/{article:slug}', [StoreController::class, 'article'])->name('articles.show');
+Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
+Route::get('/about-us', [StoreController::class, 'page'])->defaults('page', 'about')->name('about');
+Route::get('/contact-us', [StoreController::class, 'page'])->defaults('page', 'contact')->name('contact');
+Route::get('/terms', [StoreController::class, 'page'])->defaults('page', 'terms')->name('terms');
+Route::get('/checkout', [StoreController::class, 'checkout'])->name('checkout');
+Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1')->name('checkout.store');
+Route::get('/orders/{order}/invoice/{token}', [CheckoutController::class, 'invoice'])->name('orders.invoice');
+Route::get('/orders/{order}/invoice/{token}/pdf', [CheckoutController::class, 'invoicePdf'])->name('orders.invoice.pdf');
+Route::get('/payments/zarinpal/callback/{order}/{token}', [CheckoutController::class, 'callback'])->name('payments.zarinpal.callback');
+Route::get('/track-order', OrderTrackingController::class)->middleware('throttle:20,1')->name('orders.track');
 Route::middleware('auth')->group(function () {
     Route::get('/account', [StoreController::class, 'account'])->name('account');
     Route::patch('/account/profile', [AccountController::class, 'update'])->name('account.profile.update');
+    Route::post('/favorites/{product}', [FavoriteController::class, 'toggle'])->name('favorites.toggle');
 
     Route::middleware('can:manage-store')->group(function () {
         Route::get('/admin', [StoreController::class, 'admin'])->name('admin');

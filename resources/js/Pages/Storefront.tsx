@@ -141,7 +141,8 @@ const imageUrl = (path?: string | null) => {
     return `/${normalized}`;
 };
 const optimizeProductImage = async (file: File): Promise<File> => {
-    if (file.size <= 900 * 1024 || typeof createImageBitmap === 'undefined') return file;
+    const safeUploadSize = 1700 * 1024;
+    if (file.size <= safeUploadSize || typeof createImageBitmap === 'undefined') return file;
     try {
         const bitmap = await createImageBitmap(file);
         const maxDimension = 1400;
@@ -151,8 +152,26 @@ const optimizeProductImage = async (file: File): Promise<File> => {
         canvas.height = Math.max(1, Math.round(bitmap.height * scale));
         canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         bitmap.close();
-        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.76));
+        let quality = 0.78;
+        let blob: Blob | null = null;
+        do {
+            blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+            quality -= 0.08;
+        } while (blob && blob.size > safeUploadSize && quality >= 0.46);
         if (!blob) return file;
+        if (blob.size > safeUploadSize) {
+            const resizeScale = Math.sqrt(safeUploadSize / blob.size) * 0.92;
+            const width = Math.max(1, Math.round(canvas.width * resizeScale));
+            const height = Math.max(1, Math.round(canvas.height * resizeScale));
+            const resizedCanvas = document.createElement('canvas');
+            resizedCanvas.width = width;
+            resizedCanvas.height = height;
+            resizedCanvas.getContext('2d')?.drawImage(canvas, 0, 0, width, height);
+            blob = await new Promise<Blob | null>((resolve) => resizedCanvas.toBlob(resolve, 'image/webp', 0.62));
+        }
+        if (!blob || blob.size > safeUploadSize) {
+            throw new Error('فشرده‌سازی تصویر به حجم مجاز انجام نشد.');
+        }
         return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp', lastModified: Date.now() });
     } catch {
         return file;
@@ -231,12 +250,14 @@ export default function Storefront({
     shopFilters = { brand_id: '', category_id: '', min_price: '', max_price: '' },
     brandOptions = [],
     categoryOptions = [],
+    favoriteProductIds = [],
+    favoriteProducts = [],
 }: any) {
     const [search, setSearch] = useState('');
     const [initialCart] = useState<StoredCart>(readStoredCart);
     const [cart, setCart] = useState<CardProduct[]>(initialCart.items);
     const [cartExpiresAt, setCartExpiresAt] = useState<number | null>(initialCart.expiresAt);
-    const [fav, setFav] = useState<number[]>([]);
+    const [fav, setFav] = useState<number[]>(() => favoriteProductIds.map(Number));
     const [panel, setPanel] = useState<'cart' | 'account' | null>(null);
     const [filter, setFilter] = useState('');
     const [shopFilterForm, setShopFilterForm] = useState<ShopFilters>(shopFilters);
@@ -248,6 +269,9 @@ export default function Storefront({
     useEffect(() => {
         if (view === 'shop') setShopFilterForm(shopFilters);
     }, [view, shopFilters?.brand_id, shopFilters?.category_id, shopFilters?.min_price, shopFilters?.max_price]);
+    useEffect(() => {
+        setFav(favoriteProductIds.map(Number));
+    }, [auth?.user?.id, JSON.stringify(favoriteProductIds)]);
     const displayed = useMemo(
         () =>
             list
@@ -282,6 +306,25 @@ export default function Storefront({
     };
     const holdCartForPayment = () => setCartExpiresAt(Date.now() + 10 * 60 * 1000);
     const releaseCartHold = () => setCartExpiresAt(null);
+    const toggleFavorite = async (productId: number) => {
+        if (!auth?.user) {
+            router.visit(route('login'));
+            return;
+        }
+
+        const wasFavorite = fav.includes(productId);
+        setFav((items) => wasFavorite ? items.filter((id) => id !== productId) : [...items, productId]);
+        try {
+            const response = await axios.post(route('favorites.toggle', productId));
+            setFav((items) => response.data.is_favorite
+                ? Array.from(new Set([...items, productId]))
+                : items.filter((id) => id !== productId));
+        } catch {
+            setFav((items) => wasFavorite
+                ? Array.from(new Set([...items, productId]))
+                : items.filter((id) => id !== productId));
+        }
+    };
     const applyShopFilters = (event: FormEvent) => {
         event.preventDefault();
         const params = Object.fromEntries(Object.entries(shopFilterForm).filter(([, value]) => value !== ''));
@@ -424,7 +467,7 @@ export default function Storefront({
                 ) : view === 'article' ? (
                     <ArticleDetail article={article} />
                 ) : view === 'product' ? (
-                    <ProductDetail product={product} add={addToCart} />
+                    <ProductDetail product={product} add={addToCart} favorite={fav.includes(product?.id)} toggleFavorite={toggleFavorite} />
                 ) : view === 'admin' ? (
                     <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} tags={tags} articleCategories={articleCategories} accounting={accounting} shippingMethods={shippingMethods} />
                 ) : view === 'admin-orders' ? (
@@ -434,7 +477,7 @@ export default function Storefront({
                 ) : view === 'admin-product' ? (
                     <AdminProductEditor product={adminProduct} categories={categories} brands={brands} />
                 ) : view === 'account' ? (
-                    <Account orders={orders} auth={auth} />
+                    <Account orders={orders} auth={auth} favoriteProducts={favoriteProducts} favoriteIds={fav} add={addToCart} toggleFavorite={toggleFavorite} />
                 ) : view === 'checkout' ? (
                     <Checkout cart={cart} shippingMethods={shippingMethods} clearCart={clearCart} holdCartForPayment={holdCartForPayment} releaseCartHold={releaseCartHold} auth={auth} cardToCard={cardToCard} />
                 ) : view === 'invoice' ? (
@@ -483,9 +526,7 @@ export default function Storefront({
                                         p={p}
                                         add={addToCart}
                                         fav={fav.includes(p.id)}
-                                        toggle={() =>
-                                            setFav((items) => (items.includes(p.id) ? items.filter((item) => item !== p.id) : [...items, p.id]))
-                                        }
+                                        toggle={() => toggleFavorite(p.id)}
                                     />
                                 ))}
                             </div>
@@ -555,7 +596,7 @@ function ProductCard({ p, add, fav, toggle }: any) {
         <article className="card">
             <div className="photo">
                 {p.sale && <span className="badge">{p.tag || 'تخفیف ویژه'}</span>}
-                <button className="heart" aria-label="افزودن به علاقه‌مندی" onClick={toggle}>
+                <button className={`heart ${fav ? 'selected' : ''}`} type="button" aria-label={fav ? 'حذف از علاقه‌مندی‌ها' : 'افزودن به علاقه‌مندی‌ها'} aria-pressed={fav} onClick={toggle}>
                     {fav ? '♥' : '♡'}
                 </button>
                 {p.image ? <img src={p.image} alt={p.name} loading="lazy" /> : <div className="photo-placeholder">بدون عکس</div>}
@@ -644,7 +685,7 @@ function resolveSeo(view: string, product?: Product, article?: Article, selected
     };
 }
 
-function ProductDetail({ product, add }: { product: Product; add: (product: CardProduct) => void }) {
+function ProductDetail({ product, add, favorite, toggleFavorite }: { product: Product; add: (product: CardProduct) => void; favorite: boolean; toggleFavorite: (productId: number) => void }) {
     const gallery = Array.from(new Set([
         product?.main_image,
         ...(product?.images?.map((image) => image.path) || []),
@@ -678,9 +719,14 @@ function ProductDetail({ product, add }: { product: Product; add: (product: Card
                         {product.sale_price && <del>{toman(Number(product.price))}</del>}
                         <b>{toman(Number(product.sale_price || product.price || 0))}</b>
                     </div>
-                    <button className="primary" disabled={!card.stock} onClick={() => add(card)}>
-                        {card.stock ? 'افزودن به سبد خرید' : 'ناموجود'}
-                    </button>
+                    <div className="product-detail-actions">
+                        <button className="primary" disabled={!card.stock} onClick={() => add(card)}>
+                            {card.stock ? 'افزودن به سبد خرید' : 'ناموجود'}
+                        </button>
+                        <button className={`favorite-button ${favorite ? 'selected' : ''}`} type="button" aria-pressed={favorite} onClick={() => toggleFavorite(product.id)}>
+                            {favorite ? '♥ حذف از علاقه‌مندی‌ها' : '♡ افزودن به علاقه‌مندی‌ها'}
+                        </button>
+                    </div>
                     {product.description && <article className="product-description">{product.description}</article>}
                 </section>
             </div>
@@ -827,9 +873,9 @@ function StaticPage({ type }: any) {
     );
 }
 
-function Account({ orders, auth }: { orders: Order[]; auth: any }) {
+function Account({ orders, auth, favoriteProducts, favoriteIds, add, toggleFavorite }: { orders: Order[]; auth: any; favoriteProducts: Product[]; favoriteIds: number[]; add: (product: CardProduct) => void; toggleFavorite: (productId: number) => void }) {
     const { props } = usePage<any>();
-    const [section, setSection] = useState<'orders' | 'profile'>('orders');
+    const [section, setSection] = useState<'orders' | 'favorites' | 'profile'>('orders');
     const profile = useForm({
         first_name: auth?.user?.first_name || '',
         last_name: auth?.user?.last_name || '',
@@ -849,6 +895,7 @@ function Account({ orders, auth }: { orders: Order[]; auth: any }) {
                 <aside>
                     <b>داشبورد</b>
                     <button className={section === 'orders' ? 'active' : ''} onClick={() => setSection('orders')}>سفارش‌های من</button>
+                    <button className={section === 'favorites' ? 'active' : ''} onClick={() => setSection('favorites')}>کالاهای مورد علاقه</button>
                     <button className={section === 'profile' ? 'active' : ''} onClick={() => setSection('profile')}>ویرایش اطلاعات حساب</button>
                     {auth?.user?.is_admin && <Link href="/admin">پنل مدیریت فروشگاه</Link>}
                     <button className="logout-button" onClick={() => router.post('/logout')}>خروج از حساب</button>
@@ -867,6 +914,22 @@ function Account({ orders, auth }: { orders: Order[]; auth: any }) {
                                 </article>
                             )) : <p>هنوز سفارشی ثبت نکرده‌اید.</p>}
                         </div>
+                    </> : section === 'favorites' ? <>
+                        <h2>کالاهای مورد علاقه من</h2>
+                        <p>کالاهایی که قبلاً انتخاب کرده‌اید اینجا نگهداری می‌شوند.</p>
+                        {favoriteProducts.filter((item) => favoriteIds.includes(item.id)).length ? (
+                            <div className="product-grid account-favorites">
+                                {favoriteProducts.filter((item) => favoriteIds.includes(item.id)).map((item) => (
+                                    <ProductCard
+                                        key={item.id}
+                                        p={toCard(item)}
+                                        add={add}
+                                        fav
+                                        toggle={() => toggleFavorite(item.id)}
+                                    />
+                                ))}
+                            </div>
+                        ) : <div className="no-results"><b>هنوز کالایی انتخاب نکرده‌اید</b><span>از فروشگاه روی علامت قلب کالا بزنید.</span></div>}
                     </> : <>
                         <h2>ویرایش اطلاعات حساب</h2>
                         <form className="profile-form" onSubmit={(event) => { event.preventDefault(); profile.patch(route('account.profile.update'), { preserveScroll: true, onSuccess: () => profile.reset('password', 'password_confirmation') }); }}>
