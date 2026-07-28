@@ -134,6 +134,8 @@ const siteDescription = 'خرید مطمئن لوازم جانبی موبایل�
 const toman = (n: number) => new Intl.NumberFormat('fa-IR').format(n) + ' تومان';
 const imageUrl = (path?: string | null) => {
     if (!path) return undefined;
+    const productStoragePath = path.match(/(?:^|\/)storage(?:\/app\/public)?\/products\/(.+)$/i);
+    if (productStoragePath?.[1]) return `/product-images/${productStoragePath[1]}`;
     if (/^(https?:)?\/\//i.test(path) || path.startsWith('/')) return path;
     const normalized = path.replace(/^public\//, 'storage/').replace(/^storage\/app\/public\//, 'storage/');
     return `/${normalized}`;

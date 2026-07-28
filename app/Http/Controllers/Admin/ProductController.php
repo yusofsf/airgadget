@@ -310,7 +310,7 @@ class ProductController extends Controller
 
     private function uniqueSlug(string $model, string $value): string
     {
-        $base = Str::slug($value) ?: Str::random(8);
+        $base = $this->slugValue($value) ?: Str::random(8);
         $slug = $base;
         $counter = 2;
 
@@ -320,6 +320,14 @@ class ProductController extends Controller
         }
 
         return $slug;
+    }
+
+    private function slugValue(string $value): string
+    {
+        $value = str_replace(['ي', 'ى', 'ك'], ['ی', 'ی', 'ک'], trim(Str::lower($value)));
+        $value = preg_replace('/[^\p{Arabic}\p{L}\p{N}]+/u', '-', $value) ?: '';
+
+        return trim($value, '-');
     }
 
     private function uniqueSku(string $value): string
