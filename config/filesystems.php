@@ -44,14 +44,21 @@ return [
             'throw' => false,
         ],
 
-        // Product images live in a real public directory. This avoids relying on
-        // a storage symlink, which is commonly unavailable on shared hosting.
+        // Product images are served through the /product-images route, so they do
+        // not need to be written into the web root. Keeping them under storage
+        // uses Laravel's writable application directory on shared hosting.
         'product_images' => [
             'driver' => 'local',
-            'root' => public_path('uploads/products'),
-            'url' => env('APP_URL').'/uploads/products',
-            'visibility' => 'public',
+            'root' => storage_path('app/product-images'),
             'throw' => true,
+        ],
+
+        // Compatibility location for images uploaded by releases that wrote
+        // directly into public/uploads/products.
+        'legacy_product_images' => [
+            'driver' => 'local',
+            'root' => public_path('uploads/products'),
+            'throw' => false,
         ],
 
         's3' => [

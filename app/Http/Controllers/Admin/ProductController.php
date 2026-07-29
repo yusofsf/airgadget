@@ -77,8 +77,12 @@ class ProductController extends Controller
             $disk = Storage::disk($diskName);
             $path = $filename;
 
-            // Keep images uploaded before the public uploads directory was added
-            // available while new uploads are written to the host's public folder.
+            // Keep images created by both older storage layouts available.
+            if (! $disk->exists($path)) {
+                $diskName = 'legacy_product_images';
+                $disk = Storage::disk($diskName);
+            }
+
             if (! $disk->exists($path)) {
                 $diskName = 'public';
                 $disk = Storage::disk($diskName);
@@ -98,6 +102,7 @@ class ProductController extends Controller
             $this->uploadLog('warning', 'product_image.not_found', [
                 'filename' => $filename,
                 'new_path' => config('filesystems.disks.product_images.root').DIRECTORY_SEPARATOR.$filename,
+                'public_uploads_path' => config('filesystems.disks.legacy_product_images.root').DIRECTORY_SEPARATOR.$filename,
                 'legacy_path' => config('filesystems.disks.public.root').DIRECTORY_SEPARATOR.'products'.DIRECTORY_SEPARATOR.$filename,
             ]);
             abort(404);
@@ -403,6 +408,7 @@ class ProductController extends Controller
             ->all();
 
         Storage::disk('product_images')->delete($filenames);
+        Storage::disk('legacy_product_images')->delete($filenames);
         Storage::disk('public')->delete(array_map(fn ($filename) => "products/{$filename}", $filenames));
     }
 
@@ -454,7 +460,7 @@ class ProductController extends Controller
             report($exception);
 
             throw ValidationException::withMessages([
-                'image' => 'ذخیره تصویر روی هاست انجام نشد؛ دسترسی نوشتن پوشه public/uploads/products را بررسی کنید.',
+                'image' => 'ذخیره تصویر روی هاست انجام نشد؛ دسترسی نوشتن پوشه storage/app/product-images را بررسی کنید.',
             ]);
         }
 
