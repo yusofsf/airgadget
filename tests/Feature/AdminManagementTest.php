@@ -199,6 +199,22 @@ test('admin can open the complete product editor and upload a visible main image
     Storage::disk('product_images')->assertExists(basename($separateUploadPath));
 
     $this->actingAs($admin)
+        ->withHeader('Accept', 'application/json')
+        ->post(route('admin.products.update', $product), [
+            '_method' => 'patch',
+            'name' => 'محصول قابل ویرایش',
+            'sku' => 'EDIT-100',
+            'category_id' => $category->id,
+            'price' => 500000,
+            'stock' => 3,
+            'is_active' => true,
+            'expected_image_count' => 1,
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('images');
+
+    $this->actingAs($admin)
+        ->withHeader('Accept', 'application/json')
         ->post(route('admin.products.update', $product), [
             '_method' => 'patch',
             'name' => 'محصول ویرایش‌شده',
@@ -208,9 +224,11 @@ test('admin can open the complete product editor and upload a visible main image
             'stock' => 5,
             'is_active' => true,
             'main_image_choice' => 'new:0',
+            'expected_image_count' => 1,
             'images' => [UploadedFile::fake()->image('product.jpg', 600, 600)],
         ])
-        ->assertSessionHasNoErrors();
+        ->assertOk()
+        ->assertJsonPath('uploaded_images', 1);
 
     $product->refresh();
     expect($product->name)->toBe('محصول ویرایش‌شده')

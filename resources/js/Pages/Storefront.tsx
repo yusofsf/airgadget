@@ -1,6 +1,6 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import axios from 'axios';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 
 type Brand = { id: number; name: string };
 type Category = { id: number; name: string; slug?: string; products_count?: number };
@@ -1457,6 +1457,7 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
     const [imageUploadError, setImageUploadError] = useState('');
     const [preparingImages, setPreparingImages] = useState(false);
     const [savingProduct, setSavingProduct] = useState(false);
+    const selectedImagesRef = useRef<File[]>([]);
     const form = useForm<ProductEditForm>({
         _method: 'patch',
         name: product.name || '',
@@ -1513,10 +1514,16 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
     const submit = async (event: FormEvent) => {
         event.preventDefault();
         const payload = new FormData();
+        const selectedFiles = [...selectedImagesRef.current];
+
+        if (previews.length > 0 && selectedFiles.length === 0) {
+            setImageUploadError('فایل انتخاب‌شده از حافظه فرم حذف شده است؛ لطفاً دوباره تصویر را انتخاب کنید.');
+            return;
+        }
 
         Object.entries(form.data).forEach(([key, value]) => {
             if (key === 'images') {
-                (value as File[]).forEach((file) => payload.append('images[]', file, file.name));
+                selectedFiles.forEach((file) => payload.append('images[]', file, file.name));
                 return;
             }
 
@@ -1527,6 +1534,7 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
 
             payload.append(key, typeof value === 'boolean' ? (value ? '1' : '0') : String(value ?? ''));
         });
+        payload.append('expected_image_count', String(selectedFiles.length));
 
         setImageUploadError('');
         setImageUploadProgress(0);
@@ -1534,15 +1542,21 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
         form.clearErrors();
 
         try {
-            await axios.post(route('admin.products.update', product.id), payload, {
+            const response = await axios.post(route('admin.products.update', product.id), payload, {
                 headers: { Accept: 'application/json' },
                 onUploadProgress: (progressEvent) => {
                     if (progressEvent.total) {
-                        setImageUploadProgress(Math.round((progressEvent.loaded / progressEvent.total) * 100));
+                        setImageUploadProgress(Math.min(99, Math.round((progressEvent.loaded / progressEvent.total) * 100)));
                     }
                 },
             });
+            const storedImageCount = Number(response.data?.uploaded_images ?? -1);
+            if (storedImageCount !== selectedFiles.length) {
+                throw new Error(`سرور دریافت ${selectedFiles.length} تصویر را انتظار داشت اما ذخیره ${storedImageCount} تصویر را تأیید کرد.`);
+            }
+            setImageUploadProgress(100);
             previews.forEach((preview) => URL.revokeObjectURL(preview));
+            selectedImagesRef.current = [];
             setPreviews([]);
             form.setData('images', []);
             form.setData('remove_image_ids', []);
@@ -1629,15 +1643,18 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                                 if (files.some((file) => file.size > 10 * 1024 * 1024)) {
                                     form.setError('images', 'حجم هر تصویر باید کمتر از ۱۰ مگابایت باشد.');
                                     event.target.value = '';
+                                    selectedImagesRef.current = [];
                                     form.setData('images', []);
                                     setPreviews([]);
                                     return;
                                 }
                                 const nextPreviews = files.map((file) => URL.createObjectURL(file));
+                                selectedImagesRef.current = files;
                                 form.setData('images', files);
                                 setPreviews(nextPreviews);
                                 if (!form.data.main_image_choice && files.length) form.setData('main_image_choice', 'new:0');
                             } catch (error) {
+                                selectedImagesRef.current = [];
                                 setImageUploadError(uploadErrorMessage(error));
                             } finally {
                                 setPreparingImages(false);

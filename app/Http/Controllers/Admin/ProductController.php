@@ -136,7 +136,7 @@ class ProductController extends Controller
         ]);
     }
 
-    public function update(Request $request, Product $product): RedirectResponse
+    public function update(Request $request, Product $product): RedirectResponse|JsonResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -162,9 +162,26 @@ class ProductController extends Controller
             'remove_legacy_paths' => ['nullable', 'array', 'max:20'],
             'remove_legacy_paths.*' => ['string', 'max:1000'],
             'main_image_choice' => ['nullable', 'string', 'max:100'],
+            'expected_image_count' => ['nullable', 'integer', 'min:0', 'max:8'],
         ]);
 
-        DB::transaction(function () use ($request, $validated, $product) {
+        $receivedImages = $request->file('images', []);
+        $expectedImageCount = (int) ($validated['expected_image_count'] ?? count($receivedImages));
+        $receivedImageCount = count($receivedImages);
+        $this->uploadLog('info', 'product_image.update_payload_verified', [
+            'product_id' => $product->id,
+            'expected_image_count' => $expectedImageCount,
+            'received_image_count' => $receivedImageCount,
+            'content_length' => $request->server('CONTENT_LENGTH'),
+        ]);
+
+        if ($expectedImageCount !== $receivedImageCount) {
+            throw ValidationException::withMessages([
+                'images' => "مرورگر {$expectedImageCount} تصویر اعلام کرد اما سرور {$receivedImageCount} تصویر دریافت کرد.",
+            ]);
+        }
+
+        DB::transaction(function () use ($validated, $product, $receivedImages) {
             $relatedPaths = $product->images()->pluck('path');
             $legacyPaths = collect([$product->main_image, ...($product->gallery ?? [])])
                 ->filter()
@@ -193,7 +210,7 @@ class ProductController extends Controller
 
             $newImages = [];
             $nextSortOrder = (int) $product->images()->max('sort_order') + 1;
-            foreach ($request->file('images', []) as $index => $image) {
+            foreach ($receivedImages as $index => $image) {
                 $path = $this->storeProductImage($image);
                 $newImages[$index] = $product->images()->create([
                     'path' => $path,
@@ -225,6 +242,18 @@ class ProductController extends Controller
                 'gallery' => $allImagePaths->all(),
             ]);
         });
+
+        if ($request->expectsJson()) {
+            $product->refresh()->load(['images' => fn ($query) => $query->orderBy('sort_order')]);
+
+            return response()->json([
+                'message' => 'محصول و تصاویر با موفقیت ذخیره شدند.',
+                'product_id' => $product->id,
+                'uploaded_images' => $receivedImageCount,
+                'main_image' => $product->main_image,
+                'images' => $product->images,
+            ]);
+        }
 
         return back()->with('status', "محصول «{$product->name}» ویرایش شد.");
     }
