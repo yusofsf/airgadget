@@ -8,8 +8,8 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\Tag;
 use App\Support\PersianSlug;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -129,6 +129,7 @@ class ProductController extends Controller
                 'brand',
                 'category',
                 'tags',
+                'specifications',
                 'images' => fn ($query) => $query->orderBy('sort_order'),
             ]),
             'categories' => Category::orderBy('name')->get(['id', 'name']),
@@ -154,6 +155,10 @@ class ProductController extends Controller
             'tags' => ['nullable', 'string', 'max:1000'],
             'weight' => ['nullable', 'numeric', 'min:0'],
             'dimensions' => ['nullable', 'string', 'max:255'],
+            'color' => ['nullable', 'string', 'max:100'],
+            'specifications' => ['nullable', 'array', 'max:30'],
+            'specifications.*.key' => ['nullable', 'string', 'max:100', 'required_with:specifications.*.value'],
+            'specifications.*.value' => ['nullable', 'string', 'max:1000', 'required_with:specifications.*.key'],
             'is_active' => ['required', 'boolean'],
             'images' => ['nullable', 'array', 'max:8'],
             'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
@@ -190,12 +195,25 @@ class ProductController extends Controller
                 ->values();
             $removedLegacyPaths = $legacyPaths->intersect($validated['remove_legacy_paths'] ?? [])->values();
 
-            $product->update(collect($validated)->only([
-                'name', 'sku', 'category_id', 'brand_id', 'price', 'sale_price', 'stock',
-                'short_description', 'description', 'meta_title', 'meta_description',
-                'meta_keywords', 'weight', 'dimensions', 'is_active',
-            ])->all());
+            $attributes = $product->attributes ?? [];
+            $color = trim((string) ($validated['color'] ?? ''));
+            if ($color !== '') {
+                $attributes['color'] = $color;
+            } else {
+                unset($attributes['color']);
+            }
+
+            $product->update([
+                ...collect($validated)->only([
+                    'name', 'sku', 'category_id', 'brand_id', 'price', 'sale_price', 'stock',
+                    'short_description', 'description', 'meta_title', 'meta_description',
+                    'meta_keywords', 'weight', 'dimensions', 'is_active',
+                ])->all(),
+                'attributes' => $attributes ?: null,
+            ]);
             $product->tags()->sync($this->tagIds($validated['tags'] ?? ''));
+            $product->specifications()->delete();
+            $product->specifications()->createMany($this->specificationRows($validated['specifications'] ?? []));
 
             $removedImages = $product->images()
                 ->whereIn('id', $validated['remove_image_ids'] ?? [])
@@ -292,6 +310,10 @@ class ProductController extends Controller
             'meta_description' => ['nullable', 'string', 'max:500'],
             'meta_keywords' => ['nullable', 'string', 'max:500'],
             'tags' => ['nullable', 'string', 'max:1000'],
+            'color' => ['nullable', 'string', 'max:100'],
+            'specifications' => ['nullable', 'array', 'max:30'],
+            'specifications.*.key' => ['nullable', 'string', 'max:100', 'required_with:specifications.*.value'],
+            'specifications.*.value' => ['nullable', 'string', 'max:1000', 'required_with:specifications.*.key'],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
             'images' => ['nullable', 'array', 'max:8'],
             'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
@@ -316,9 +338,13 @@ class ProductController extends Controller
                 'price' => $validated['price'],
                 'sale_price' => $validated['sale_price'] ?? null,
                 'stock' => $validated['stock'] ?? 0,
+                'attributes' => ! empty(trim((string) ($validated['color'] ?? '')))
+                    ? ['color' => trim((string) $validated['color'])]
+                    : null,
                 'is_active' => true,
             ]);
             $product->tags()->sync($this->tagIds($validated['tags'] ?? ''));
+            $product->specifications()->createMany($this->specificationRows($validated['specifications'] ?? []));
 
             $paths = [];
             foreach ($request->file('images', []) as $index => $image) {
@@ -389,6 +415,18 @@ class ProductController extends Controller
                 ['name' => $name],
                 ['slug' => $this->uniqueSlug(Tag::class, $name)]
             )->id)
+            ->values()
+            ->all();
+    }
+
+    private function specificationRows(array $specifications): array
+    {
+        return collect($specifications)
+            ->map(fn ($specification) => [
+                'key' => trim((string) ($specification['key'] ?? '')),
+                'value' => trim((string) ($specification['value'] ?? '')),
+            ])
+            ->filter(fn ($specification) => $specification['key'] !== '' && $specification['value'] !== '')
             ->values()
             ->all();
     }

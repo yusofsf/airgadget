@@ -104,11 +104,18 @@ test('product and article taxonomies are stored and can be edited or deleted', f
             'category_name' => 'صوتی',
             'price' => 900000,
             'tags' => 'انکر، هندزفری',
+            'color' => 'مشکی',
+            'specifications' => [
+                ['key' => 'نوع اتصال', 'value' => 'بلوتوث'],
+                ['key' => 'نسخه بلوتوث', 'value' => '۵.۳'],
+            ],
         ])
         ->assertSessionHasNoErrors();
 
-    $product = Product::where('name', 'هندزفری تگ‌دار')->firstOrFail()->load('tags');
-    expect($product->tags->pluck('name')->all())->toEqualCanonicalizing(['انکر', 'هندزفری']);
+    $product = Product::where('name', 'هندزفری تگ‌دار')->firstOrFail()->load(['tags', 'specifications']);
+    expect($product->tags->pluck('name')->all())->toEqualCanonicalizing(['انکر', 'هندزفری'])
+        ->and($product->attributes['color'])->toBe('مشکی')
+        ->and($product->specifications->pluck('key')->all())->toBe(['نوع اتصال', 'نسخه بلوتوث']);
 
     $this->actingAs($admin)
         ->post(route('admin.articles.store'), [
@@ -223,6 +230,10 @@ test('admin can open the complete product editor and upload a visible main image
             'price' => 650000,
             'stock' => 5,
             'is_active' => true,
+            'color' => 'سفید',
+            'specifications' => [
+                ['key' => 'عمر باتری', 'value' => '۸ ساعت'],
+            ],
             'main_image_choice' => 'new:0',
             'expected_image_count' => 1,
             'images' => [UploadedFile::fake()->image('product.jpg', 600, 600)],
@@ -230,10 +241,12 @@ test('admin can open the complete product editor and upload a visible main image
         ->assertOk()
         ->assertJsonPath('uploaded_images', 1);
 
-    $product->refresh();
+    $product->refresh()->load('specifications');
     expect($product->name)->toBe('محصول ویرایش‌شده')
         ->and($product->main_image)->toStartWith('/product-images/')
-        ->and($product->images)->toHaveCount(2);
+        ->and($product->images)->toHaveCount(2)
+        ->and($product->attributes['color'])->toBe('سفید')
+        ->and($product->specifications->first()->value)->toBe('۸ ساعت');
 
     $storedPath = 'products/'.basename($product->main_image);
     Storage::disk('product_images')->assertExists(basename($storedPath));

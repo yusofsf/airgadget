@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 type Brand = { id: number; name: string };
 type Category = { id: number; name: string; slug?: string; products_count?: number };
 type UploadedImage = { id?: number; path: string; sort_order?: number };
+type ProductSpecification = { id?: number; key: string; value: string };
 type Tag = { id: number; name: string; slug: string; products_count?: number; articles_count?: number };
 type ArticleCategory = { id: number; name: string; slug: string; description?: string | null; articles_count?: number };
 type ShopFilters = { brand_id: string; category_id: string; min_price: string; max_price: string };
@@ -28,7 +29,8 @@ type Product = {
     category?: Category | null;
     main_image?: string | null;
     images?: UploadedImage[];
-    attributes?: { color?: string };
+    attributes?: { color?: string; [key: string]: unknown };
+    specifications?: ProductSpecification[];
     stock: number;
     is_active?: boolean;
     tags?: Tag[];
@@ -90,6 +92,8 @@ type AdminForm = {
     meta_description: string;
     meta_keywords: string;
     tags: string;
+    color: string;
+    specifications: ProductSpecification[];
     main_image_index: number;
     images: File[];
 };
@@ -125,6 +129,8 @@ type ProductEditForm = {
     remove_legacy_paths: string[];
     main_image_choice: string;
     tags: string;
+    color: string;
+    specifications: ProductSpecification[];
 };
 
 const supportPhone = '09205850190';
@@ -685,6 +691,34 @@ function resolveSeo(view: string, product?: Product, article?: Article, selected
     };
 }
 
+function SpecificationEditor({ specifications, onChange }: { specifications: ProductSpecification[]; onChange: (specifications: ProductSpecification[]) => void }) {
+    const update = (index: number, field: 'key' | 'value', value: string) => {
+        onChange(specifications.map((specification, itemIndex) => itemIndex === index
+            ? { ...specification, [field]: value }
+            : specification));
+    };
+
+    return (
+        <div className="specification-editor">
+            <div className="specification-editor-heading">
+                <div>
+                    <b>ویژگی‌های فنی</b>
+                    <small>مثل نوع اتصال، ظرفیت باتری، نسخه بلوتوث یا جنس بدنه</small>
+                </div>
+                <button type="button" onClick={() => onChange([...specifications, { key: '', value: '' }])}>+ افزودن ویژگی</button>
+            </div>
+            {specifications.map((specification, index) => (
+                <div className="specification-editor-row" key={index}>
+                    <input value={specification.key} onChange={(event) => update(index, 'key', event.target.value)} placeholder="نام ویژگی" />
+                    <input value={specification.value} onChange={(event) => update(index, 'value', event.target.value)} placeholder="مقدار ویژگی" />
+                    <button type="button" aria-label="حذف ویژگی" onClick={() => onChange(specifications.filter((_, itemIndex) => itemIndex !== index))}>حذف</button>
+                </div>
+            ))}
+            {specifications.length === 0 && <small className="specification-editor-empty">هنوز ویژگی‌ای اضافه نشده است.</small>}
+        </div>
+    );
+}
+
 function ProductDetail({ product, add, favorite, toggleFavorite }: { product: Product; add: (product: CardProduct) => void; favorite: boolean; toggleFavorite: (productId: number) => void }) {
     const gallery = Array.from(new Set([
         product?.main_image,
@@ -698,6 +732,8 @@ function ProductDetail({ product, add, favorite, toggleFavorite }: { product: Pr
     }
 
     const card = toCard(product);
+    const color = typeof product.attributes?.color === 'string' ? product.attributes.color : '';
+    const specifications = product.specifications || [];
 
     return (
         <main className="page product-detail">
@@ -719,6 +755,20 @@ function ProductDetail({ product, add, favorite, toggleFavorite }: { product: Pr
                         {product.sale_price && <del>{toman(Number(product.price))}</del>}
                         <b>{toman(Number(product.sale_price || product.price || 0))}</b>
                     </div>
+                    {(color || specifications.length > 0) && (
+                        <section className="product-specifications">
+                            <h2>ویژگی‌های محصول</h2>
+                            <dl>
+                                {color && <div><dt>رنگ</dt><dd>{color}</dd></div>}
+                                {specifications.map((specification) => (
+                                    <div key={specification.id || `${specification.key}-${specification.value}`}>
+                                        <dt>{specification.key}</dt>
+                                        <dd>{specification.value}</dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        </section>
+                    )}
                     <div className="product-detail-actions">
                         <button className="primary" disabled={!card.stock} onClick={() => add(card)}>
                             {card.stock ? 'افزودن به سبد خرید' : 'ناموجود'}
@@ -1171,6 +1221,8 @@ function Admin({
         meta_description: '',
         meta_keywords: '',
         tags: '',
+        color: '',
+        specifications: [],
         main_image_index: 0,
         images: [],
     });
@@ -1303,6 +1355,8 @@ function Admin({
                         />
                         <input value={data.meta_keywords} onChange={(event) => setData('meta_keywords', event.target.value)} placeholder="کلمات کلیدی محصول، جداشده با ویرگول" />
                         <input value={data.tags} onChange={(event) => setData('tags', event.target.value)} placeholder="تگ‌های محصول با ویرگول، مثل انکر، هندزفری" />
+                        <input value={data.color} onChange={(event) => setData('color', event.target.value)} placeholder="رنگ محصول، مثل مشکی یا سفید" />
+                        <SpecificationEditor specifications={data.specifications} onChange={(specifications) => setData('specifications', specifications)} />
                         <label className="upload-box">
                             <span>انتخاب تصاویر محصول</span>
                             <small>می‌توانید چند عکس انتخاب کنید؛ بعد یکی را به عنوان عکس اصلی بزنید.</small>
@@ -1474,6 +1528,11 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
         meta_keywords: product.meta_keywords || '',
         weight: product.weight ? String(product.weight) : '',
         dimensions: product.dimensions || '',
+        color: typeof product.attributes?.color === 'string' ? product.attributes.color : '',
+        specifications: (product.specifications || []).map((specification) => ({
+            key: specification.key,
+            value: specification.value,
+        })),
         is_active: product.is_active !== false,
         images: [],
         remove_image_ids: [],
@@ -1524,6 +1583,14 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
         Object.entries(form.data).forEach(([key, value]) => {
             if (key === 'images') {
                 selectedFiles.forEach((file) => payload.append('images[]', file, file.name));
+                return;
+            }
+
+            if (key === 'specifications') {
+                (value as ProductSpecification[]).forEach((specification, index) => {
+                    payload.append(`specifications[${index}][key]`, specification.key);
+                    payload.append(`specifications[${index}][value]`, specification.value);
+                });
                 return;
             }
 
@@ -1610,6 +1677,14 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                         <label className="wide"><span>توضیحات کامل</span><textarea value={form.data.description} onChange={(event) => form.setData('description', event.target.value)} /></label>
                         <label className="wide"><span>تگ‌های محصول</span><input value={form.data.tags} onChange={(event) => form.setData('tags', event.target.value)} placeholder="با ویرگول جدا کنید" /></label>
                     </div>
+                </section>
+
+                <section className="product-editor-card">
+                    <h2>رنگ و ویژگی‌های محصول</h2>
+                    <div className="product-editor-fields product-color-field">
+                        <label><span>رنگ محصول</span><input value={form.data.color} onChange={(event) => form.setData('color', event.target.value)} placeholder="مثلاً مشکی، سفید یا آبی" /></label>
+                    </div>
+                    <SpecificationEditor specifications={form.data.specifications} onChange={(specifications) => form.setData('specifications', specifications)} />
                 </section>
 
                 <section className="product-editor-card">
