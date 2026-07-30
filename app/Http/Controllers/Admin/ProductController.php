@@ -281,6 +281,7 @@ class ProductController extends Controller
         $name = $product->name;
         $paths = $product->images()->pluck('path')
             ->push($product->main_image)
+            ->concat($product->gallery ?? [])
             ->filter()
             ->map(fn ($path) => $this->storedImagePath($path))
             ->filter()
@@ -453,12 +454,24 @@ class ProductController extends Controller
 
     private function storedImagePath(string $url): ?string
     {
-        if (Str::contains($url, '/product-images/')) {
-            return 'products/'.basename($url);
+        $path = parse_url($url, PHP_URL_PATH) ?: $url;
+
+        if (Str::contains($path, '/product-images/')) {
+            return 'products/'.basename($path);
         }
 
-        if (Str::contains($url, '/storage/products/')) {
-            return 'products/'.Str::after($url, '/storage/products/');
+        if (Str::contains($path, '/storage/products/')) {
+            return 'products/'.Str::after($path, '/storage/products/');
+        }
+
+        // Older releases stored either `products/file.jpg` or just the
+        // filename in the database. Keep those files removable as well.
+        if (Str::startsWith($path, 'products/')) {
+            return 'products/'.basename($path);
+        }
+
+        if (basename($path) === $path && preg_match('/\A[a-zA-Z0-9._-]+\z/', $path)) {
+            return 'products/'.$path;
         }
 
         return null;

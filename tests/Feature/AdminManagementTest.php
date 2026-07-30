@@ -285,3 +285,49 @@ test('admin can open the complete product editor and upload a visible main image
     $this->assertDatabaseMissing('products', ['id' => $product->id]);
     Storage::disk('product_images')->assertMissing(basename($replacementPath));
 });
+
+test('removing product images deletes modern and legacy files from host storage', function () {
+    Storage::fake('public');
+    Storage::fake('product_images');
+    Storage::fake('legacy_product_images');
+
+    $admin = User::factory()->create(['is_admin' => true]);
+    $category = Category::create(['name' => 'Images', 'slug' => 'images']);
+    $product = Product::create([
+        'category_id' => $category->id,
+        'name' => 'Image cleanup product',
+        'slug' => 'image-cleanup-product',
+        'sku' => 'IMAGE-CLEANUP-1',
+        'price' => 100000,
+        'stock' => 1,
+        'is_active' => true,
+        'main_image' => '/product-images/current.jpg',
+        'gallery' => ['/product-images/current.jpg', '/storage/products/legacy.jpg'],
+    ]);
+    $image = $product->images()->create(['path' => '/product-images/current.jpg', 'sort_order' => 1]);
+
+    Storage::disk('product_images')->put('current.jpg', 'current');
+    Storage::disk('legacy_product_images')->put('legacy.jpg', 'legacy');
+
+    $this->actingAs($admin)
+        ->post(route('admin.products.update', $product), [
+            '_method' => 'patch',
+            'name' => $product->name,
+            'sku' => $product->sku,
+            'category_id' => $category->id,
+            'price' => $product->price,
+            'stock' => $product->stock,
+            'is_active' => true,
+            'remove_image_ids' => [$image->id],
+            'remove_legacy_paths' => ['/storage/products/legacy.jpg'],
+            'expected_image_count' => 0,
+        ])
+        ->assertSessionHasNoErrors();
+
+    $product->refresh();
+    expect($product->main_image)->toBeNull()
+        ->and($product->gallery)->toBe([]);
+    $this->assertDatabaseMissing('product_images', ['id' => $image->id]);
+    Storage::disk('product_images')->assertMissing('current.jpg');
+    Storage::disk('legacy_product_images')->assertMissing('legacy.jpg');
+});

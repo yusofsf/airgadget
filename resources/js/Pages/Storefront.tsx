@@ -68,6 +68,17 @@ type CardProduct = {
     stock: number;
     tag?: string;
 };
+type ProductSearchResult = {
+    id: number;
+    name: string;
+    slug: string;
+    price: number;
+    sale_price?: number | null;
+    stock: number;
+    brand?: string | null;
+    image?: string | null;
+    short_description?: string | null;
+};
 type SeoMeta = {
     title: string;
     description: string;
@@ -260,6 +271,9 @@ export default function Storefront({
     favoriteProducts = [],
 }: any) {
     const [search, setSearch] = useState('');
+    const [searchResults, setSearchResults] = useState<ProductSearchResult[]>([]);
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [searchLoading, setSearchLoading] = useState(false);
     const [initialCart] = useState<StoredCart>(readStoredCart);
     const [cart, setCart] = useState<CardProduct[]>(initialCart.items);
     const [cartExpiresAt, setCartExpiresAt] = useState<number | null>(initialCart.expiresAt);
@@ -272,6 +286,35 @@ export default function Storefront({
     const list = productItems.map(toCard);
     const heroImage = '/images/airpods-pro.jpg';
     const pageSeo = resolveSeo(view, product, article, selectedCategory, selectedTag, selectedArticleCategory);
+    useEffect(() => {
+        const term = search.trim();
+        if (term.length < 2) {
+            setSearchResults([]);
+            setSearchLoading(false);
+            return;
+        }
+
+        const controller = new AbortController();
+        const timer = window.setTimeout(async () => {
+            setSearchLoading(true);
+            try {
+                const response = await axios.get(route('products.search'), {
+                    params: { q: term },
+                    signal: controller.signal,
+                });
+                setSearchResults(response.data?.products || []);
+            } catch (error: any) {
+                if (error?.code !== 'ERR_CANCELED') setSearchResults([]);
+            } finally {
+                if (!controller.signal.aborted) setSearchLoading(false);
+            }
+        }, 250);
+
+        return () => {
+            window.clearTimeout(timer);
+            controller.abort();
+        };
+    }, [search]);
     useEffect(() => {
         if (view === 'shop') setShopFilterForm(shopFilters);
     }, [view, shopFilters?.brand_id, shopFilters?.category_id, shopFilters?.min_price, shopFilters?.max_price]);
@@ -405,18 +448,46 @@ export default function Storefront({
                     </div>
                 </header>
 
-                <div className="search">
+                <form className="search" onSubmit={(event) => {
+                    event.preventDefault();
+                    if (searchResults[0]) router.visit(route('products.show', searchResults[0].slug));
+                }}>
                     <span>⌕</span>
-                    <input
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                        aria-label="جست‌وجوی محصولات"
-                        placeholder="جست‌وجو در میان محصولات و برندها..."
-                    />
-                    <button onClick={() => document.querySelector('.products')?.scrollIntoView({ behavior: 'smooth' })}>
+                    <div className="search-field">
+                        <input
+                            value={search}
+                            onChange={(event) => { setSearch(event.target.value); setSearchOpen(true); }}
+                            onFocus={() => setSearchOpen(true)}
+                            onBlur={() => window.setTimeout(() => setSearchOpen(false), 150)}
+                            aria-label="جست‌وجوی محصولات"
+                            aria-expanded={searchOpen && search.trim().length >= 2}
+                            aria-controls="product-search-results"
+                            autoComplete="off"
+                            placeholder="جست‌وجو در میان محصولات و برندها..."
+                        />
+                        {searchOpen && search.trim().length >= 2 && <div className="search-results" id="product-search-results">
+                            {searchLoading ? <div className="search-message">در حال جست‌وجو...</div> : searchResults.length ? searchResults.map((result) => (
+                                <Link className="search-result" href={route('products.show', result.slug)} key={result.id}>
+                                    <div className="search-result-image">
+                                        {result.image ? <img src={imageUrl(result.image)} alt="" /> : <span>بدون عکس</span>}
+                                    </div>
+                                    <div className="search-result-info">
+                                        <b>{result.name}</b>
+                                        <small>{result.brand || 'بدون برند'}{result.short_description ? ` — ${result.short_description}` : ''}</small>
+                                    </div>
+                                    <div className="search-result-price">
+                                        {result.sale_price ? <del>{toman(Number(result.price))}</del> : null}
+                                        <strong>{toman(Number(result.sale_price || result.price))}</strong>
+                                        <small>{result.stock > 0 ? 'موجود' : 'ناموجود'}</small>
+                                    </div>
+                                </Link>
+                            )) : <div className="search-message">محصولی پیدا نشد.</div>}
+                        </div>}
+                    </div>
+                    <button type="submit" disabled={!searchResults.length}>
                         جست‌وجو
                     </button>
-                </div>
+                </form>
 
                 {view === 'home' && (
                     <>
@@ -1559,6 +1630,24 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
         }
     };
 
+    const removeNewImage = (index: number) => {
+        URL.revokeObjectURL(previews[index]);
+
+        const nextFiles = selectedImagesRef.current.filter((_, fileIndex) => fileIndex !== index);
+        const nextPreviews = previews.filter((_, previewIndex) => previewIndex !== index);
+        selectedImagesRef.current = nextFiles;
+        form.setData('images', nextFiles);
+        setPreviews(nextPreviews);
+
+        if (form.data.main_image_choice === `new:${index}`) {
+            const fallback = visibleCurrentImages[0];
+            form.setData('main_image_choice', fallback?.id ? `existing:${fallback.id}` : nextFiles.length ? 'new:0' : '');
+        } else if (form.data.main_image_choice.startsWith('new:')) {
+            const selectedIndex = Number(form.data.main_image_choice.slice(4));
+            if (selectedIndex > index) form.setData('main_image_choice', `new:${selectedIndex - 1}`);
+        }
+    };
+
     const toggleRemoveLegacyImage = (path: string, index: number) => {
         const next = removedLegacy.has(path)
             ? form.data.remove_legacy_paths.filter((item) => item !== path)
@@ -1748,6 +1837,7 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                         <div key={preview}>
                             <img src={preview} alt={`تصویر جدید ${index + 1}`} />
                             <label><input type="radio" name="editor-main-image" checked={form.data.main_image_choice === `new:${index}`} onChange={() => form.setData('main_image_choice', `new:${index}`)} /> عکس اصلی</label>
+                            <button type="button" onClick={() => removeNewImage(index)}>حذف عکس</button>
                         </div>
                     ))}</div>}
                 </section>

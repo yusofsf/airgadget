@@ -11,11 +11,46 @@ use App\Models\Product;
 use App\Models\StoreSetting;
 use App\Models\Tag;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 
 class StoreController extends Controller
 {
+    public function searchProducts(Request $request): JsonResponse
+    {
+        $term = trim((string) $request->query('q', ''));
+
+        if (mb_strlen($term) < 2) {
+            return response()->json(['products' => []]);
+        }
+
+        $products = Product::query()
+            ->with(['brand:id,name', 'images:id,product_id,path,sort_order'])
+            ->where('is_active', true)
+            ->where(function ($query) use ($term) {
+                $query->where('name', 'like', "%{$term}%")
+                    ->orWhere('sku', 'like', "%{$term}%")
+                    ->orWhereHas('brand', fn ($brandQuery) => $brandQuery->where('name', 'like', "%{$term}%"));
+            })
+            ->latest()
+            ->limit(6)
+            ->get()
+            ->map(fn (Product $product) => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'slug' => $product->slug,
+                'price' => $product->price,
+                'sale_price' => $product->sale_price,
+                'stock' => $product->stock,
+                'brand' => $product->brand?->name,
+                'image' => $product->main_image ?: $product->images->sortBy('sort_order')->first()?->path,
+                'short_description' => $product->short_description,
+            ]);
+
+        return response()->json(['products' => $products]);
+    }
+
     public function home()
     {
         return Inertia::render('Storefront', [

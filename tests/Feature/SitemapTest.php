@@ -155,3 +155,41 @@ test('shop filters products by brand category and effective price', function () 
             ->has('categoryOptions', 2)
         );
 });
+
+test('live product search returns active matching products with a short summary', function () {
+    $category = Category::create(['name' => 'هدفون', 'slug' => 'search-headphones']);
+    $brand = Brand::create(['name' => 'انکر', 'slug' => 'search-anker']);
+    $active = Product::create([
+        'category_id' => $category->id,
+        'brand_id' => $brand->id,
+        'name' => 'هدفون انکر مدل ویژه',
+        'slug' => 'special-anker-headphone',
+        'sku' => 'SEARCH-ANKER-1',
+        'price' => 1200000,
+        'sale_price' => 990000,
+        'stock' => 3,
+        'short_description' => 'هدفون سبک با شارژدهی بالا',
+        'main_image' => '/product-images/search.jpg',
+        'is_active' => true,
+    ]);
+    Product::create([
+        'category_id' => $category->id,
+        'name' => 'هدفون غیرفعال',
+        'slug' => 'inactive-search-headphone',
+        'sku' => 'SEARCH-HIDDEN-1',
+        'price' => 500000,
+        'stock' => 0,
+        'is_active' => false,
+    ]);
+
+    $this->getJson(route('products.search', ['q' => 'انکر']))
+        ->assertOk()
+        ->assertJsonCount(1, 'products')
+        ->assertJsonPath('products.0.id', $active->id)
+        ->assertJsonPath('products.0.sale_price', 990000)
+        ->assertJsonPath('products.0.short_description', 'هدفون سبک با شارژدهی بالا');
+
+    $this->getJson(route('products.search', ['q' => 'ه']))
+        ->assertOk()
+        ->assertJsonCount(0, 'products');
+});
