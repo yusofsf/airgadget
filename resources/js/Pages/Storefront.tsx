@@ -965,6 +965,8 @@ function ArticleDetail({ article }: { article: Article }) {
 }
 
 function StaticPage({ type }: any) {
+    const { props } = usePage<any>();
+    const contactForm = useForm({ name: '', phone: '', message: '' });
     const data: any = {
         about: [
             'درباره ایرگجت',
@@ -983,11 +985,19 @@ function StaticPage({ type }: any) {
             <h1>{data[type][0]}</h1>
             <p>{data[type][1]}</p>
             {type === 'contact' && (
-                <form>
-                    <input placeholder="نام و نام خانوادگی" />
-                    <input placeholder="شماره تماس" />
-                    <textarea placeholder="پیام شما" />
-                    <button className="primary">ارسال پیام</button>
+                <form onSubmit={(event) => {
+                    event.preventDefault();
+                    contactForm.post(route('contact.store'), {
+                        preserveScroll: true,
+                        onSuccess: () => contactForm.reset(),
+                    });
+                }}>
+                    {props.flash?.status && <div className="admin-status">{props.flash.status}</div>}
+                    <input required placeholder="نام و نام خانوادگی" value={contactForm.data.name} onChange={(event) => contactForm.setData('name', event.target.value)} />
+                    <input required placeholder="شماره تماس" inputMode="tel" dir="ltr" value={contactForm.data.phone} onChange={(event) => contactForm.setData('phone', event.target.value)} />
+                    <textarea required placeholder="پیام شما" value={contactForm.data.message} onChange={(event) => contactForm.setData('message', event.target.value)} />
+                    {Object.keys(contactForm.errors).length > 0 && <div className="form-error-box">{Object.values(contactForm.errors)[0]}</div>}
+                    <button className="primary" disabled={contactForm.processing}>{contactForm.processing ? 'در حال ارسال...' : 'ارسال پیام'}</button>
                 </form>
             )}
         </main>

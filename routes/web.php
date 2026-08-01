@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ShippingController;
 use App\Http\Controllers\Admin\TaxonomyController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\ContactController;
 use App\Http\Controllers\FavoriteController;
 use App\Http\Controllers\OrderTrackingController;
 use App\Http\Controllers\SitemapController;
@@ -27,6 +28,7 @@ Route::get('/articles/{article:slug}', [StoreController::class, 'article'])->nam
 Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 Route::get('/about-us', [StoreController::class, 'page'])->defaults('page', 'about')->name('about');
 Route::get('/contact-us', [StoreController::class, 'page'])->defaults('page', 'contact')->name('contact');
+Route::post('/contact-us', ContactController::class)->middleware('throttle:5,1')->name('contact.store');
 Route::get('/terms', [StoreController::class, 'page'])->defaults('page', 'terms')->name('terms');
 Route::get('/checkout', [StoreController::class, 'checkout'])->name('checkout');
 Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1')->name('checkout.store');
