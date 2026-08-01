@@ -416,7 +416,7 @@ export default function Storefront({
                 </div>
                 <header>
                     <Link href="/" className="logo" aria-label="ایرگجت">
-                        air<span>gadget</span><b>●</b>
+                        <img src="/airgadget-logo.png" alt="ایرگجت" />
                     </Link>
                     <nav className={menuOpen ? 'open' : ''}>
                         <Link href="/shop">فروشگاه</Link>
@@ -1070,7 +1070,7 @@ function Account({ orders, auth, favoriteProducts, favoriteIds, add, toggleFavor
     );
 }
 
-function Checkout({ cart, shippingMethods, clearCart, holdCartForPayment, releaseCartHold, auth, cardToCard }: { cart: CardProduct[]; shippingMethods: ShippingMethod[]; clearCart: () => void; holdCartForPayment: () => void; releaseCartHold: () => void; auth: any; cardToCard?: { number: string; holder: string } }) {
+function Checkout({ cart, shippingMethods, clearCart, auth, cardToCard }: { cart: CardProduct[]; shippingMethods: ShippingMethod[]; clearCart: () => void; holdCartForPayment: () => void; releaseCartHold: () => void; auth: any; cardToCard?: { number: string; holder: string } }) {
     const quantities = Object.values(cart.reduce<Record<number, { product_id: number; quantity: number }>>((items, product) => {
         items[product.id] = items[product.id] || { product_id: product.id, quantity: 0 };
         items[product.id].quantity++;
@@ -1088,7 +1088,7 @@ function Checkout({ cart, shippingMethods, clearCart, holdCartForPayment, releas
         postal_code: auth?.user?.postal_code || '',
         address: auth?.user?.address || '',
         shipping_method: shippingMethods[0]?.code || '',
-        payment_method: 'zarinpal',
+        payment_method: 'card_to_card',
         card_amount: '',
         receipt: null as File | null,
         items: quantities,
@@ -1103,11 +1103,9 @@ function Checkout({ cart, shippingMethods, clearCart, holdCartForPayment, releas
             <div className="checkout-grid">
                 <form onSubmit={(event) => {
                     event.preventDefault();
-                    if (form.data.payment_method === 'zarinpal') holdCartForPayment();
                     form.post(route('checkout.store'), {
-                        forceFormData: form.data.payment_method === 'card_to_card',
-                        onSuccess: () => { if (form.data.payment_method === 'card_to_card') clearCart(); },
-                        onError: releaseCartHold,
+                        forceFormData: true,
+                        onSuccess: clearCart,
                     });
                 }}>
                     <h3>مشخصات تحویل‌گیرنده</h3>
@@ -1127,17 +1125,15 @@ function Checkout({ cart, shippingMethods, clearCart, holdCartForPayment, releas
                         </label>
                     )) : <p>در حال حاضر روش ارسال فعالی تعریف نشده است.</p>}
                     <h3>روش پرداخت</h3>
-                    <label className="payment-choice"><input type="radio" name="pay" checked={form.data.payment_method === 'zarinpal'} onChange={() => form.setData('payment_method', 'zarinpal')} /> پرداخت امن آنلاین با زرین‌پال</label>
-                    <label className="payment-choice"><input type="radio" name="pay" checked={form.data.payment_method === 'card_to_card'} onChange={() => form.setData('payment_method', 'card_to_card')} /> کارت‌به‌کارت و بارگذاری فیش</label>
-                    {form.data.payment_method === 'card_to_card' && <div className="card-payment-box">
+                    <div className="card-payment-box">
                         <small>مبلغ سفارش را به کارت زیر واریز کنید:</small>
                         <b className="card-number" dir="ltr">{(cardToCard?.number || '6037997199529528').replace(/(\d{4})(?=\d)/g, '$1 ')}</b>
                         <span>به نام {cardToCard?.holder || 'سید محمد یوسف سادات فخر'}</span>
-                        <label>مبلغ واریزی (تومان)<input inputMode="numeric" value={form.data.card_amount} onChange={(event) => form.setData('card_amount', event.target.value)} placeholder={String(subtotal + Number(shipping?.cost || 0))} /></label>
-                        <label className="receipt-upload">تصویر فیش واریزی<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => form.setData('receipt', event.target.files?.[0] || null)} /><small>{form.data.receipt?.name || 'حداکثر ۵ مگابایت'}</small></label>
-                    </div>}
+                        <label>مبلغ واریزی (تومان)<input required inputMode="numeric" value={form.data.card_amount} onChange={(event) => form.setData('card_amount', event.target.value)} placeholder={String(subtotal + Number(shipping?.cost || 0))} /></label>
+                        <label className="receipt-upload">تصویر فیش واریزی<input required type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => form.setData('receipt', event.target.files?.[0] || null)} /><small>{form.data.receipt?.name || 'حداکثر ۵ مگابایت'}</small></label>
+                    </div>
                     {Object.keys(form.errors).length > 0 && <div className="form-error-box">{Object.values(form.errors)[0]}</div>}
-                    <button className="primary" disabled={form.processing || cart.length === 0 || !form.data.shipping_method}>{form.processing ? 'در حال ثبت...' : form.data.payment_method === 'card_to_card' ? 'ثبت فیش و سفارش' : 'پرداخت با زرین‌پال'}</button>
+                    <button className="primary" disabled={form.processing || cart.length === 0 || !form.data.shipping_method}>{form.processing ? 'در حال ثبت...' : 'ثبت فیش و سفارش'}</button>
                 </form>
                 <aside>
                     <h3>خلاصه سفارش</h3>
@@ -1160,7 +1156,7 @@ function Invoice({ order, shipping, clearCart }: { order: Order; shipping?: Ship
     }, [order.paid_at, order.payment_method]);
     return (
         <main className="page invoice-page">
-            {props.flash?.status && <div className="payment-success"><b>پرداخت موفق</b><span>{props.flash.status}</span></div>}
+            {props.flash?.status && <div className="payment-success"><b>فیش پرداخت ثبت شد</b><span>{props.flash.status}</span></div>}
             <div className="invoice-actions"><Link href="/">بازگشت به فروشگاه</Link><span><a href={`/orders/${order.id}/invoice/${order.invoice_token}/pdf`} target="_blank" rel="noreferrer">دانلود فاکتور PDF</a><button onClick={() => window.print()}>چاپ فاکتور</button></span></div>
             <section className="invoice-sheet">
                 <header><div className="logo">air<span>gadget</span></div><div><b>فاکتور فروش</b><small>شماره: {order.number}</small></div></header>

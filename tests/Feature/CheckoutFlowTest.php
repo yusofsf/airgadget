@@ -6,7 +6,6 @@ use App\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
-use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
 
@@ -29,87 +28,22 @@ beforeEach(function () {
     ]);
 });
 
-test('a guest can pay with the mock zarinpal gateway and receives a trackable order', function () {
+test('online payment is rejected because card to card is the only payment method', function () {
     $product = Product::firstOrFail();
-
     $response = $this->post(route('checkout.store'), [
-        'first_name' => 'علی',
-        'last_name' => 'احمدی',
-        'phone' => '09121234567',
-        'postal_code' => '1234567890',
-        'address' => 'مشهد، خیابان نمونه، پلاک ۱۰',
-        'shipping_method' => 'post',
-        'payment_method' => 'zarinpal',
-        'items' => [['product_id' => $product->id, 'quantity' => 2]],
-    ]);
-
-    $order = Order::firstOrFail();
-    $response->assertRedirectContains("/payments/zarinpal/callback/{$order->id}/");
-    expect($order->payment_authority)->toStartWith('MOCK-');
-    expect($product->fresh()->stock)->toBe(1);
-
-    $this->get(route('payments.zarinpal.callback', [
-        'order' => $order,
-        'token' => $order->invoice_token,
-        'Status' => 'OK',
-        'Authority' => $order->payment_authority,
-    ]))->assertRedirect(route('orders.invoice', ['order' => $order, 'token' => $order->invoice_token]));
-
-    $order->refresh();
-    expect($order->status)->toBe('pending_review')
-        ->and($order->paid_at)->not->toBeNull()
-        ->and($order->payment_reference)->toStartWith('TEST-');
-
-    $this->get(route('orders.track', ['number' => $order->number, 'phone' => '09121234567']))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('Storefront')
-            ->where('view', 'tracking')
-            ->where('trackedOrder.number', $order->number));
-
-    $this->get(route('orders.invoice.pdf', ['order' => $order, 'token' => $order->invoice_token]))
-        ->assertOk()
-        ->assertHeader('content-type', 'application/pdf');
-});
-
-test('a cancelled payment keeps the cart reservation for ten minutes then marks the order unpaid', function () {
-    $product = Product::firstOrFail();
-    $payload = [
         'first_name' => 'مینا',
         'last_name' => 'رضایی',
         'phone' => '09123334444',
         'postal_code' => '9876543210',
         'address' => 'مشهد، آدرس آزمایشی',
-        'shipping_method' => 'pickup',
+        'shipping_method' => 'post',
         'payment_method' => 'zarinpal',
-        'items' => [['product_id' => $product->id, 'quantity' => 2]],
-    ];
-
-    $this->post(route('checkout.store'), $payload);
-    $order = Order::firstOrFail();
-    expect($product->fresh()->stock)->toBe(1);
-
-    $callback = route('payments.zarinpal.callback', [
-        'order' => $order,
-        'token' => $order->invoice_token,
-        'Status' => 'NOK',
-        'Authority' => $order->payment_authority,
+        'items' => [['product_id' => $product->id, 'quantity' => 1]],
     ]);
-    $this->get($callback)->assertOk();
-    $this->get($callback)->assertOk();
 
-    expect($product->fresh()->stock)->toBe(1)
-        ->and($order->fresh()->inventory_released)->toBeFalse()
-        ->and($order->fresh()->status)->toBe('pending_payment')
-        ->and($order->fresh()->payment_expires_at)->not->toBeNull();
-
-    $this->travel(11)->minutes();
-    $this->artisan('orders:expire-unpaid')->assertSuccessful();
-    $this->artisan('orders:expire-unpaid')->assertSuccessful();
-
-    expect($product->fresh()->stock)->toBe(3)
-        ->and($order->fresh()->inventory_released)->toBeTrue()
-        ->and($order->fresh()->status)->toBe('unpaid');
+    $response->assertSessionHasErrors('payment_method');
+    expect(Order::count())->toBe(0)
+        ->and($product->fresh()->stock)->toBe(3);
 });
 
 test('a guest can submit an exact card to card payment amount and receipt', function () {

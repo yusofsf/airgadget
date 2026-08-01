@@ -17,12 +17,11 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Mpdf\Mpdf;
 use Mpdf\Output\Destination;
-use RuntimeException;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class CheckoutController extends Controller
 {
-    public function store(Request $request, ZarinpalGateway $gateway, OrderReservationService $reservations): SymfonyResponse
+    public function store(Request $request, OrderReservationService $reservations): SymfonyResponse
     {
         $reservations->expireUnpaidOrders();
         $request->merge([
@@ -37,9 +36,9 @@ class CheckoutController extends Controller
             'phone' => ['required', 'regex:/^09\d{9}$/'],
             'postal_code' => ['required', 'regex:/^\d{10}$/'],
             'shipping_method' => ['required', 'in:mashhad_courier,pickup,post'],
-            'payment_method' => ['required', 'in:zarinpal,card_to_card'],
-            'card_amount' => ['required_if:payment_method,card_to_card', 'nullable', 'integer', 'min:1'],
-            'receipt' => ['required_if:payment_method,card_to_card', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'payment_method' => ['required', 'in:card_to_card'],
+            'card_amount' => ['required', 'integer', 'min:1'],
+            'receipt' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'address' => ['required', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
@@ -74,7 +73,7 @@ class CheckoutController extends Controller
 
             $shippingCost = (int) $shipping['cost'];
             $total = $subtotal + $shippingCost;
-            if ($validated['payment_method'] === 'card_to_card' && (int) $validated['card_amount'] !== $total) {
+            if ((int) $validated['card_amount'] !== $total) {
                 throw ValidationException::withMessages(['card_amount' => 'مبلغ واریزی باید دقیقاً با جمع کل سفارش برابر باشد.']);
             }
             $receiptPath = $request->file('receipt')
@@ -84,12 +83,12 @@ class CheckoutController extends Controller
                 'user_id' => $request->user()?->id,
                 'number' => 'AG-'.now()->format('ymd').'-'.strtoupper(Str::random(6)),
                 'invoice_token' => Str::random(48),
-                'status' => $validated['payment_method'] === 'card_to_card' ? 'pending_review' : 'pending_payment',
+                'status' => 'pending_review',
                 'shipping_method' => $validated['shipping_method'],
                 'payment_method' => $validated['payment_method'],
-                'payment_expires_at' => $validated['payment_method'] === 'zarinpal' ? now()->addMinutes(10) : null,
+                'payment_expires_at' => null,
                 'payment_receipt' => $receiptPath,
-                'card_to_card_amount' => $validated['payment_method'] === 'card_to_card' ? (int) $validated['card_amount'] : null,
+                'card_to_card_amount' => (int) $validated['card_amount'],
                 'subtotal' => $subtotal,
                 'discount' => 0,
                 'shipping_cost' => $shippingCost,
@@ -120,26 +119,9 @@ class CheckoutController extends Controller
             return $order;
         });
 
-        if ($validated['payment_method'] === 'card_to_card') {
-            return redirect()
-                ->route('orders.invoice', ['order' => $order, 'token' => $order->invoice_token])
-                ->with('status', "فیش شما ثبت شد. کد سفارش {$order->number} است و پس از بررسی مدیر تأیید می‌شود.");
-        }
-
-        try {
-            $payment = $gateway->request(
-                (int) $order->total,
-                route('payments.zarinpal.callback', ['order' => $order, 'token' => $order->invoice_token]),
-                "پرداخت سفارش {$order->number} ایرگجت",
-                $validated['phone'],
-            );
-            $order->update(['payment_authority' => $payment['authority']]);
-        } catch (RuntimeException $exception) {
-            $this->failAndRelease($order);
-            throw ValidationException::withMessages(['payment' => $exception->getMessage()]);
-        }
-
-        return Inertia::location($payment['url']);
+        return redirect()
+            ->route('orders.invoice', ['order' => $order, 'token' => $order->invoice_token])
+            ->with('status', "فیش شما ثبت شد. کد سفارش {$order->number} است و پس از بررسی مدیر تأیید می‌شود.");
     }
 
     public function callback(Request $request, Order $order, string $token, ZarinpalGateway $gateway, OrderReservationService $reservations): Response|RedirectResponse
