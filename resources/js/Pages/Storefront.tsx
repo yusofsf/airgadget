@@ -279,6 +279,7 @@ export default function Storefront({
     const [cartExpiresAt, setCartExpiresAt] = useState<number | null>(initialCart.expiresAt);
     const [fav, setFav] = useState<number[]>(() => favoriteProductIds.map(Number));
     const [panel, setPanel] = useState<'cart' | 'account' | null>(null);
+    const [cartNotice, setCartNotice] = useState<string | null>(null);
     const [filter, setFilter] = useState('');
     const [shopFilterForm, setShopFilterForm] = useState<ShopFilters>(shopFilters);
     const [menuOpen, setMenuOpen] = useState(false);
@@ -332,6 +333,11 @@ export default function Storefront({
         window.localStorage.setItem('airgadget-cart', JSON.stringify({ items: cart, expiresAt: cartExpiresAt }));
     }, [cart, cartExpiresAt]);
     useEffect(() => {
+        if (!cartNotice) return;
+        const timer = window.setTimeout(() => setCartNotice(null), 3000);
+        return () => window.clearTimeout(timer);
+    }, [cartNotice]);
+    useEffect(() => {
         if (!cartExpiresAt) return;
         const remaining = cartExpiresAt - Date.now();
         if (remaining <= 0) {
@@ -346,8 +352,13 @@ export default function Storefront({
         return () => window.clearTimeout(timer);
     }, [cartExpiresAt]);
     const addToCart = (item: CardProduct) => {
+        const quantityInCart = cart.filter((cartItem) => cartItem.id === item.id).length;
+        if (item.stock <= 0 || quantityInCart >= item.stock) {
+            setCartNotice('موجودی محصول کافی نیست');
+            return;
+        }
         setCartExpiresAt(null);
-        setCart((items) => items.filter((cartItem) => cartItem.id === item.id).length < item.stock ? [...items, item] : items);
+        setCart((items) => [...items, item]);
     };
     const clearCart = () => {
         setCart([]);
@@ -410,6 +421,7 @@ export default function Storefront({
                 {pageSeo.canonical && <link rel="canonical" href={pageSeo.canonical} />}
             </Head>
             <div className="site" dir="rtl">
+                {cartNotice && <div className="cart-notice" role="alert">{cartNotice}</div>}
                 <div className="topbar">
                     <span>ارسال سریع برای سفارش‌های ثبت‌شده در مشهد</span>
                     <span>پشتیبانی: {supportPhone}</span>
@@ -660,7 +672,7 @@ export default function Storefront({
 
                 {panel && <button className="drawer-backdrop" aria-label="بستن پنل" onClick={() => setPanel(null)} />}
                 {panel === 'cart' && (
-                    <CartDrawer cart={cart} setCart={setCart} close={() => setPanel(null)} shippingMethods={shippingMethods} />
+                    <CartDrawer cart={cart} setCart={setCart} add={addToCart} close={() => setPanel(null)} shippingMethods={shippingMethods} />
                 )}
                 {panel === 'account' && <AccountDrawer auth={auth} close={() => setPanel(null)} />}
             </div>
@@ -685,7 +697,7 @@ function ProductCard({ p, add, fav, toggle }: any) {
                 <div>
                     {p.sale && <del>{toman(p.price)}</del>}
                     <b>{toman(p.sale || p.price)}</b>
-                    <button disabled={!p.stock} aria-label={`افزودن ${p.name} به سبد`} onClick={() => add(p)}>
+                    <button className={!p.stock ? 'unavailable' : ''} aria-label={`افزودن ${p.name} به سبد`} onClick={() => add(p)}>
                         +
                     </button>
                 </div>
@@ -841,7 +853,7 @@ function ProductDetail({ product, add, favorite, toggleFavorite }: { product: Pr
                         </section>
                     )}
                     <div className="product-detail-actions">
-                        <button className="primary" disabled={!card.stock} onClick={() => add(card)}>
+                        <button className={`primary ${!card.stock ? 'unavailable' : ''}`} onClick={() => add(card)}>
                             {card.stock ? 'افزودن به سبد خرید' : 'ناموجود'}
                         </button>
                         <button className={`favorite-button ${favorite ? 'selected' : ''}`} type="button" aria-pressed={favorite} onClick={() => toggleFavorite(product.id)}>
@@ -975,12 +987,12 @@ function StaticPage({ type }: any) {
         contact: ['تماس با ما', `آدرس: ${storeAddress} · پشتیبانی: ${supportPhone} · ایمیل: support@airgadget.ir`],
         terms: [
             'قوانین و مقررات',
-            'ثبت سفارش به منزله پذیرش قوانین فروشگاه است. امکان بازگشت کالا مطابق قوانین تجارت الکترونیک و شرایط هر محصول فراهم است.',
+            'استفاده از سایت و ثبت سفارش در ایرگجت به معنی مطالعه و پذیرش شرایط زیر است. لطفاً پیش از نهایی کردن خرید، این موارد را با دقت بررسی کنید.',
         ],
     };
 
     return (
-        <main className={`page static ${type === 'about' ? 'about-page' : ''}`}>
+        <main className={`page static ${type === 'about' ? 'about-page' : type === 'terms' ? 'terms-page' : ''}`}>
             <em>AirGadget</em>
             <h1>{data[type][0]}</h1>
             <p>{data[type][1]}</p>
@@ -1003,6 +1015,20 @@ function StaticPage({ type }: any) {
                         <div><span>ارتباط با ما</span><h2>پرسشی دارید؟ کنار شما هستیم.</h2><p>برای دریافت راهنمایی درباره محصولات یا پیگیری سفارش می‌توانید با پشتیبانی ایرگجت در ارتباط باشید.</p></div>
                         <div className="about-contact"><a href={`tel:${supportPhone}`} dir="ltr">{supportPhone}</a><Link className="primary" href="/contact-us">تماس با ما</Link></div>
                     </section>
+                </div>
+            )}
+            {type === 'terms' && (
+                <div className="terms-content">
+                    <section className="terms-notice"><b>نکته مهم</b><p>ثبت فیش به‌تنهایی به معنای تأیید نهایی سفارش نیست. سفارش ابتدا با وضعیت «ثبت شد» ذخیره می‌شود و پس از بررسی مبلغ و فیش توسط مدیر به «تأیید شده» تغییر می‌کند.</p></section>
+                    <section className="terms-list">
+                        <article><span>۱</span><div><h2>ثبت سفارش و اطلاعات مشتری</h2><p>مشتری موظف است نام، شماره تماس، کد پستی و آدرس تحویل را صحیح و کامل وارد کند. مسئولیت تأخیر یا عدم تحویل ناشی از اطلاعات نادرست بر عهده ثبت‌کننده سفارش است. پس از ثبت، کد سفارش برای پیگیری در اختیار مشتری قرار می‌گیرد.</p></div></article>
+                        <article><span>۲</span><div><h2>قیمت و موجودی محصولات</h2><p>قیمت قابل پرداخت، مبلغی است که در خلاصه سفارش نمایش داده می‌شود. موجودی کالا هنگام ثبت سفارش بررسی می‌شود؛ با این حال در صورت بروز خطای فنی، مغایرت موجودی یا اشتباه آشکار در قیمت، ایرگجت موضوع را با مشتری هماهنگ و مبلغ پرداختی را تعیین تکلیف می‌کند.</p></div></article>
+                        <article><span>۳</span><div><h2>پرداخت کارت‌به‌کارت</h2><p>پرداخت سفارش فقط از طریق کارت‌به‌کارت به شماره اعلام‌شده در صفحه تسویه انجام می‌شود. مبلغ واردشده باید دقیقاً با جمع کل سفارش برابر باشد و تصویر واضح فیش بارگذاری شود. فیش‌های مخدوش، تکراری یا دارای مبلغ متفاوت قابل تأیید نیستند.</p></div></article>
+                        <article><span>۴</span><div><h2>تأیید و ارسال سفارش</h2><p>پس از تأیید فیش، وضعیت سفارش «تأیید شده» خواهد بود. بعد از تحویل مرسوله به روش ارسال انتخابی، وضعیت به «ارسال شد» تغییر می‌کند. زمان رسیدن کالا به مقصد ممکن است با توجه به شهر، روش ارسال، تعطیلات یا شرایط شرکت حمل‌ونقل متفاوت باشد.</p></div></article>
+                        <article><span>۵</span><div><h2>لغو، بازگشت و مغایرت کالا</h2><p>درخواست لغو یا بازگشت بر اساس وضعیت سفارش، ماهیت کالا، سلامت فیزیکی و قوانین جاری بررسی می‌شود. در صورت دریافت کالای آسیب‌دیده یا مغایر با سفارش، پیش از استفاده از کالا و در سریع‌ترین زمان ممکن با پشتیبانی تماس بگیرید و تصاویر بسته‌بندی و محصول را نگه دارید.</p></div></article>
+                        <article><span>۶</span><div><h2>حریم خصوصی و ارتباطات</h2><p>اطلاعات ثبت‌شده برای پردازش سفارش، ارسال کالا، پیگیری و پشتیبانی استفاده می‌شود. ایرگجت این اطلاعات را جز در موارد لازم برای انجام سفارش، ارائه خدمات حمل‌ونقل یا الزام قانونی در اختیار اشخاص غیرمرتبط قرار نمی‌دهد.</p></div></article>
+                    </section>
+                    <section className="terms-help"><div><b>نیاز به توضیح بیشتری دارید؟</b><p>پیش از ثبت سفارش می‌توانید پرسش خود را برای پشتیبانی ارسال کنید.</p></div><Link className="primary" href="/contact-us">ارتباط با پشتیبانی</Link></section>
                 </div>
             )}
             {type === 'contact' && (
@@ -2159,7 +2185,7 @@ function ShippingPanel({ methods }: { methods: ShippingMethod[] }) {
     );
 }
 
-function CartDrawer({ cart, setCart, close, shippingMethods }: any) {
+function CartDrawer({ cart, setCart, add, close, shippingMethods }: any) {
     const grouped = Object.values((cart as CardProduct[]).reduce<Record<number, { product: CardProduct; quantity: number }>>((items, product) => {
         items[product.id] = items[product.id] || { product, quantity: 0 };
         items[product.id].quantity++;
@@ -2184,7 +2210,7 @@ function CartDrawer({ cart, setCart, close, shippingMethods }: any) {
                             <div className="cart-quantity">
                                 <button aria-label={`کم کردن ${product.name}`} onClick={() => removeOne(product.id)}>−</button>
                                 <b>{quantity}</b>
-                                <button aria-label={`اضافه کردن ${product.name}`} disabled={quantity >= product.stock} onClick={() => setCart((items: CardProduct[]) => [...items, product])}>+</button>
+                                <button className={quantity >= product.stock ? 'unavailable' : ''} aria-label={`اضافه کردن ${product.name}`} onClick={() => add(product)}>+</button>
                             </div>
                         </div>
                     ))}
