@@ -28,9 +28,9 @@
         $statusLabels = [
             'pending_payment' => 'در انتظار پرداخت',
             'unpaid' => 'پرداخت‌نشده',
-            'pending_review' => 'ثبت شده',
+            'pending_review' => 'ثبت شد',
             'processing' => 'تأیید شده',
-            'completed' => 'ارسال شده',
+            'completed' => 'ارسال شد',
             'cancelled' => 'لغو شده',
             'failed' => 'پرداخت ناموفق',
             'refunded' => 'مرجوع شده',

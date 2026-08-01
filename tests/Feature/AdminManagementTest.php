@@ -67,6 +67,35 @@ test('non admins cannot access order management', function () {
     $this->actingAs($user)->get(route('admin.orders.index'))->assertForbidden();
 });
 
+test('admin can move a registered order to confirmed and then sent', function () {
+    $admin = User::factory()->create(['is_admin' => true]);
+    $order = Order::create([
+        'number' => 'AG-STATUS-1001',
+        'status' => 'pending_review',
+        'shipping_method' => 'post',
+        'payment_method' => 'card_to_card',
+        'subtotal' => 500000,
+        'discount' => 0,
+        'shipping_cost' => 0,
+        'tax' => 0,
+        'total' => 500000,
+        'address' => ['customer_name' => 'مشتری تست', 'phone' => '09120000000'],
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.orders.status', $order), ['status' => 'processing'])
+        ->assertSessionHasNoErrors();
+
+    expect($order->fresh()->status)->toBe('processing')
+        ->and($order->fresh()->paid_at)->not->toBeNull();
+
+    $this->actingAs($admin)
+        ->patch(route('admin.orders.status', $order), ['status' => 'completed'])
+        ->assertSessionHasNoErrors();
+
+    expect($order->fresh()->status)->toBe('completed');
+});
+
 test('storefront is declared as Persian and right to left', function () {
     $this->get(route('home'))
         ->assertOk()

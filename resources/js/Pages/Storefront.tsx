@@ -970,7 +970,7 @@ function StaticPage({ type }: any) {
     const data: any = {
         about: [
             'درباره ایرگجت',
-            'ایرگجت با هدف آسان‌تر کردن خرید کالای دیجیتال و لوازم جانبی موبایل فعالیت می‌کند. کیفیت، اصالت و رضایت شما اولویت ماست.',
+            'ایرگجت یک فروشگاه تخصصی لوازم جانبی موبایل و گجت‌های کاربردی است که با هدف ساده‌تر، مطمئن‌تر و شفاف‌تر کردن تجربه خرید آنلاین فعالیت می‌کند.',
         ],
         contact: ['تماس با ما', `آدرس: ${storeAddress} · پشتیبانی: ${supportPhone} · ایمیل: support@airgadget.ir`],
         terms: [
@@ -980,10 +980,31 @@ function StaticPage({ type }: any) {
     };
 
     return (
-        <main className="page static">
+        <main className={`page static ${type === 'about' ? 'about-page' : ''}`}>
             <em>AirGadget</em>
             <h1>{data[type][0]}</h1>
             <p>{data[type][1]}</p>
+            {type === 'about' && (
+                <div className="about-content">
+                    <section className="about-story">
+                        <div>
+                            <span>داستان ما</span>
+                            <h2>انتخاب بهتر برای زندگی دیجیتال</h2>
+                        </div>
+                        <p>تنوع زیاد لوازم جانبی، انتخاب محصول مناسب را دشوار کرده است. ما در ایرگجت تلاش می‌کنیم محصولات کاربردی را با اطلاعات روشن و مشخصات قابل‌فهم در اختیار شما قرار دهیم تا بتوانید متناسب با نیاز و بودجه خود تصمیم بگیرید.</p>
+                        <p>تمرکز ما روی لوازم جانبی موبایل، ایرپاد، هدفون، شارژر و گجت‌هایی است که استفاده روزمره از فناوری را آسان‌تر می‌کنند. موجودی، قیمت و وضعیت سفارش نیز از طریق سایت در دسترس شماست.</p>
+                    </section>
+                    <section className="about-values" aria-label="ارزش‌های ایرگجت">
+                        <article><i>✓</i><h3>انتخاب با اطمینان</h3><p>نمایش مشخصات و اطلاعات لازم هر کالا برای مقایسه و انتخاب آگاهانه.</p></article>
+                        <article><i>⌁</i><h3>خرید ساده و شفاف</h3><p>فرایند سفارش روشن، قیمت‌گذاری مشخص و امکان پیگیری وضعیت سفارش.</p></article>
+                        <article><i>♡</i><h3>همراهی با مشتری</h3><p>پاسخ‌گویی پیش و پس از خرید برای رفع پرسش‌ها و پیگیری سفارش‌ها.</p></article>
+                    </section>
+                    <section className="about-support">
+                        <div><span>ارتباط با ما</span><h2>پرسشی دارید؟ کنار شما هستیم.</h2><p>برای دریافت راهنمایی درباره محصولات یا پیگیری سفارش می‌توانید با پشتیبانی ایرگجت در ارتباط باشید.</p></div>
+                        <div className="about-contact"><a href={`tel:${supportPhone}`} dir="ltr">{supportPhone}</a><Link className="primary" href="/contact-us">تماس با ما</Link></div>
+                    </section>
+                </div>
+            )}
             {type === 'contact' && (
                 <form onSubmit={(event) => {
                     event.preventDefault();
@@ -1017,7 +1038,7 @@ function Account({ orders, auth, favoriteProducts, favoriteIds, add, toggleFavor
         password: '',
         password_confirmation: '',
     });
-    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', unpaid: 'پرداخت‌نشده', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', unpaid: 'پرداخت‌نشده', pending_review: 'ثبت شد', processing: 'تأیید شده', completed: 'ارسال شد', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
     return (
         <main className="page account">
             <h1>حساب کاربری من</h1>
@@ -1160,7 +1181,7 @@ function Checkout({ cart, shippingMethods, clearCart, auth, cardToCard }: { cart
 
 function Invoice({ order, shipping, clearCart }: { order: Order; shipping?: ShippingMethod; clearCart: () => void }) {
     const { props } = usePage<any>();
-    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', unpaid: 'پرداخت‌نشده', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', unpaid: 'پرداخت‌نشده', pending_review: 'ثبت شد', processing: 'تأیید شده', completed: 'ارسال شد', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
     useEffect(() => {
         if (order.paid_at || order.payment_method === 'card_to_card') clearCart();
     }, [order.paid_at, order.payment_method]);
@@ -1210,7 +1231,7 @@ function OrderTrackingCompact() {
 
 function OrderTracking({ order, error }: { order?: Order; error?: string }) {
     const form = useForm({ number: order?.number || '', phone: order?.address?.phone || '' });
-    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', unpaid: 'پرداخت‌نشده', pending_review: 'ثبت شده', processing: 'تأیید شده', completed: 'ارسال شده', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
+    const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', unpaid: 'پرداخت‌نشده', pending_review: 'ثبت شد', processing: 'تأیید شده', completed: 'ارسال شد', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
     const steps = ['pending_review', 'processing', 'completed'];
     const activeStep = steps.indexOf(order?.status || '');
     return (
@@ -1966,9 +1987,9 @@ function AccountingPanel({ accounting }: { accounting: Accounting }) {
 const orderStatusLabels: Record<string, string> = {
     pending_payment: 'در انتظار پرداخت',
     unpaid: 'پرداخت‌نشده',
-    pending_review: 'در انتظار بررسی',
-    processing: 'در حال پردازش',
-    completed: 'تکمیل و ارسال شده',
+    pending_review: 'ثبت شد',
+    processing: 'تأیید شده',
+    completed: 'ارسال شد',
     cancelled: 'لغو شده',
     failed: 'پرداخت ناموفق',
     refunded: 'مرجوع شده',
