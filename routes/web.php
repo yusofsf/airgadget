@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ShippingController;
 use App\Http\Controllers\Admin\TaxonomyController;
 use App\Http\Controllers\Admin\TicketController as AdminTicketController;
+use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\FavoriteController;
@@ -64,6 +65,7 @@ Route::middleware('auth')->group(function () {
         Route::delete('/admin/article-categories/{articleCategory}', [TaxonomyController::class, 'destroyArticleCategory'])->name('admin.article-categories.destroy');
         Route::put('/admin/shipping', [ShippingController::class, 'update'])->name('admin.shipping.update');
         Route::get('/admin/orders', [OrderController::class, 'index'])->name('admin.orders.index');
+        Route::get('/admin/users', [AdminUserController::class, 'index'])->name('admin.users.index');
         Route::get('/admin/orders/{order}', [OrderController::class, 'show'])->name('admin.orders.show');
         Route::patch('/admin/orders/{order}/status', [OrderController::class, 'updateStatus'])->name('admin.orders.status');
         Route::get('/admin/orders/{order}/receipt', [OrderController::class, 'receipt'])->name('admin.orders.receipt');

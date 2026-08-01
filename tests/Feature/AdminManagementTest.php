@@ -67,6 +67,31 @@ test('non admins cannot access order management', function () {
     $this->actingAs($user)->get(route('admin.orders.index'))->assertForbidden();
 });
 
+test('admin can see registered users and non admins cannot access the list', function () {
+    $admin = User::factory()->create(['is_admin' => true]);
+    $customer = User::factory()->create([
+        'first_name' => 'کاربر',
+        'last_name' => 'آزمایشی',
+        'phone_number' => '09120000000',
+        'email' => 'customer@example.com',
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.users.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('Storefront')
+            ->where('view', 'admin-users')
+            ->where('users.total', 2)
+            ->where('users.data.0.id', $customer->id)
+            ->where('users.data.0.phone_number', '09120000000')
+        );
+
+    $this->actingAs($customer)
+        ->get(route('admin.users.index'))
+        ->assertForbidden();
+});
+
 test('admin can move a registered order to confirmed and then sent', function () {
     $admin = User::factory()->create(['is_admin' => true]);
     $order = Order::create([

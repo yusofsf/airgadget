@@ -55,6 +55,8 @@ type Article = {
 type ShippingMethod = { code: string; name: string; description: string; cost: number; is_active: boolean };
 type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; tax?: number; total: number; shipping_method: string; payment_method?: string; payment_receipt?: string; card_to_card_amount?: number; payment_reference?: string; paid_at?: string; created_at: string; updated_at?: string; items_count?: number; items_sum_quantity?: number; address?: { first_name?: string; last_name?: string; customer_name?: string; phone?: string; postal_code?: string; province?: string; city?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; price?: number; quantity: number }[]; user?: { first_name?: string; last_name?: string; phone_number?: string; email?: string } };
 type PaginatedOrders = { data: Order[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
+type RegisteredUser = { id: number; first_name?: string | null; last_name?: string | null; phone_number?: string | null; email: string; is_admin: boolean; created_at: string };
+type PaginatedUsers = { data: RegisteredUser[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
 type TicketMessage = { id: number; body: string; created_at: string; user?: { id: number; first_name?: string; last_name?: string; is_admin?: boolean } | null };
 type Ticket = { id: number; number: string; subject: string; status: 'open' | 'answered' | 'closed'; created_at: string; updated_at: string; messages_count?: number; messages?: TicketMessage[]; user?: { id: number; first_name?: string; last_name?: string; phone_number?: string; email?: string } };
 type PaginatedTickets = { data: Ticket[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
@@ -256,6 +258,7 @@ export default function Storefront({
     shippingMethods = [],
     accounting = {},
     orders = [],
+    users = [],
     adminOrder,
     adminProduct,
     invoice,
@@ -404,7 +407,7 @@ export default function Storefront({
             ? 'فروشگاه'
             : view === 'articles'
               ? 'مجله ایرگجت'
-              : view === 'admin' || view === 'admin-orders' || view === 'admin-order' || view === 'admin-product'
+              : view === 'admin' || view === 'admin-orders' || view === 'admin-order' || view === 'admin-product' || view === 'admin-users'
                 ? 'مدیریت فروشگاه'
                 : view === 'account'
                   ? 'حساب کاربری'
@@ -566,6 +569,8 @@ export default function Storefront({
                     <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} tags={tags} articleCategories={articleCategories} accounting={accounting} shippingMethods={shippingMethods} />
                 ) : view === 'admin-orders' ? (
                     <AdminOrders orders={orders} />
+                ) : view === 'admin-users' ? (
+                    <AdminUsers users={users} />
                 ) : view === 'admin-order' ? (
                     <AdminOrderDetail order={adminOrder} />
                 ) : view === 'admin-tickets' ? (
@@ -1425,6 +1430,7 @@ function Admin({
             <div className="admin-tabs">
                 <button className={tab === 'accounting' ? 'active' : ''} onClick={() => setTab('accounting')}>حسابداری مدیریت</button>
                 <Link href={route('admin.orders.index')}>مدیریت سفارشات</Link>
+                <Link href={route('admin.users.index')}>کاربران ثبت‌نام‌شده</Link>
                 <Link href={route('admin.tickets.index')}>تیکت‌های کاربران</Link>
                 <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}>مدیریت محصولات</button>
                 <button className={tab === 'articles' ? 'active' : ''} onClick={() => setTab('articles')}>مدیریت مقالات</button>
@@ -2169,6 +2175,46 @@ function AdminOrders({ orders }: { orders: PaginatedOrders | Order[] }) {
             </div>
             {pagination && pagination.last_page > 1 && (
                 <nav className="order-pagination" aria-label="صفحه‌بندی سفارشات">
+                    {pagination.prev_page_url ? <Link href={pagination.prev_page_url}>صفحه قبل</Link> : <span>صفحه قبل</span>}
+                    <b>صفحه {new Intl.NumberFormat('fa-IR').format(pagination.current_page)} از {new Intl.NumberFormat('fa-IR').format(pagination.last_page)}</b>
+                    {pagination.next_page_url ? <Link href={pagination.next_page_url}>صفحه بعد</Link> : <span>صفحه بعد</span>}
+                </nav>
+            )}
+        </main>
+    );
+}
+
+function AdminUsers({ users }: { users: PaginatedUsers | RegisteredUser[] }) {
+    const pagination = Array.isArray(users) ? null : users;
+    const items = Array.isArray(users) ? users : users?.data || [];
+
+    return (
+        <main className="page admin admin-users-page">
+            <div className="admin-page-heading">
+                <div>
+                    <small>پنل مدیریت</small>
+                    <h1>کاربران ثبت‌نام‌شده</h1>
+                    <p>فهرست حساب‌های کاربری ایجادشده در فروشگاه و اطلاعات تماس آن‌ها.</p>
+                </div>
+                <Link className="secondary-link" href={route('admin')}>بازگشت به پنل مدیریت</Link>
+            </div>
+            <div className="users-summary">
+                <b>{new Intl.NumberFormat('fa-IR').format(pagination?.total ?? items.length)}</b>
+                <span>حساب کاربری ثبت‌شده</span>
+            </div>
+            <div className="user-list">
+                {items.length ? items.map((user) => (
+                    <article className="user-row" key={user.id}>
+                        <span><small>نام و نام خانوادگی</small><b>{`${user.first_name || ''} ${user.last_name || ''}`.trim() || 'بدون نام'}</b></span>
+                        <span><small>شماره موبایل</small><b dir="ltr">{user.phone_number || '—'}</b></span>
+                        <span><small>ایمیل</small><a dir="ltr" href={`mailto:${user.email}`}>{user.email}</a></span>
+                        <span><small>تاریخ ثبت‌نام</small><b>{new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(user.created_at))}</b></span>
+                        <strong className={user.is_admin ? 'user-role admin' : 'user-role'}>{user.is_admin ? 'مدیر' : 'کاربر'}</strong>
+                    </article>
+                )) : <div className="empty-orders">هنوز کاربری ثبت‌نام نکرده است.</div>}
+            </div>
+            {pagination && pagination.last_page > 1 && (
+                <nav className="order-pagination" aria-label="صفحه‌بندی کاربران">
                     {pagination.prev_page_url ? <Link href={pagination.prev_page_url}>صفحه قبل</Link> : <span>صفحه قبل</span>}
                     <b>صفحه {new Intl.NumberFormat('fa-IR').format(pagination.current_page)} از {new Intl.NumberFormat('fa-IR').format(pagination.last_page)}</b>
                     {pagination.next_page_url ? <Link href={pagination.next_page_url}>صفحه بعد</Link> : <span>صفحه بعد</span>}
