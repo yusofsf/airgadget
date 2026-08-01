@@ -55,6 +55,9 @@ type Article = {
 type ShippingMethod = { code: string; name: string; description: string; cost: number; is_active: boolean };
 type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; tax?: number; total: number; shipping_method: string; payment_method?: string; payment_receipt?: string; card_to_card_amount?: number; payment_reference?: string; paid_at?: string; created_at: string; updated_at?: string; items_count?: number; items_sum_quantity?: number; address?: { first_name?: string; last_name?: string; customer_name?: string; phone?: string; postal_code?: string; province?: string; city?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; price?: number; quantity: number }[]; user?: { first_name?: string; last_name?: string; phone_number?: string; email?: string } };
 type PaginatedOrders = { data: Order[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
+type TicketMessage = { id: number; body: string; created_at: string; user?: { id: number; first_name?: string; last_name?: string; is_admin?: boolean } | null };
+type Ticket = { id: number; number: string; subject: string; status: 'open' | 'answered' | 'closed'; created_at: string; updated_at: string; messages_count?: number; messages?: TicketMessage[]; user?: { id: number; first_name?: string; last_name?: string; phone_number?: string; email?: string } };
+type PaginatedTickets = { data: Ticket[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
 type Accounting = { received: number; product_revenue: number; shipping_revenue: number; sold_items: number; paid_orders: number; pending_orders: number };
 type CardProduct = {
     id: number;
@@ -269,6 +272,8 @@ export default function Storefront({
     categoryOptions = [],
     favoriteProductIds = [],
     favoriteProducts = [],
+    tickets = [],
+    ticket,
 }: any) {
     const [search, setSearch] = useState('');
     const [searchResults, setSearchResults] = useState<ProductSearchResult[]>([]);
@@ -563,10 +568,18 @@ export default function Storefront({
                     <AdminOrders orders={orders} />
                 ) : view === 'admin-order' ? (
                     <AdminOrderDetail order={adminOrder} />
+                ) : view === 'admin-tickets' ? (
+                    <TicketsPage tickets={tickets} admin />
+                ) : view === 'admin-ticket' ? (
+                    <TicketConversation ticket={ticket} admin />
                 ) : view === 'admin-product' ? (
                     <AdminProductEditor product={adminProduct} categories={categories} brands={brands} />
                 ) : view === 'account' ? (
                     <Account orders={orders} auth={auth} favoriteProducts={favoriteProducts} favoriteIds={fav} add={addToCart} toggleFavorite={toggleFavorite} />
+                ) : view === 'tickets' ? (
+                    <TicketsPage tickets={tickets} />
+                ) : view === 'ticket' ? (
+                    <TicketConversation ticket={ticket} />
                 ) : view === 'checkout' ? (
                     <Checkout cart={cart} shippingMethods={shippingMethods} clearCart={clearCart} holdCartForPayment={holdCartForPayment} releaseCartHold={releaseCartHold} auth={auth} cardToCard={cardToCard} />
                 ) : view === 'invoice' ? (
@@ -1075,6 +1088,7 @@ function Account({ orders, auth, favoriteProducts, favoriteIds, add, toggleFavor
                     <button className={section === 'orders' ? 'active' : ''} onClick={() => setSection('orders')}>سفارش‌های من</button>
                     <button className={section === 'favorites' ? 'active' : ''} onClick={() => setSection('favorites')}>کالاهای مورد علاقه</button>
                     <button className={section === 'profile' ? 'active' : ''} onClick={() => setSection('profile')}>ویرایش اطلاعات حساب</button>
+                    <Link href={route('tickets.index')}>تیکت‌های پشتیبانی</Link>
                     {auth?.user?.is_admin && <Link href="/admin">پنل مدیریت فروشگاه</Link>}
                     <button className="logout-button" onClick={() => router.post('/logout')}>خروج از حساب</button>
                 </aside>
@@ -1411,6 +1425,7 @@ function Admin({
             <div className="admin-tabs">
                 <button className={tab === 'accounting' ? 'active' : ''} onClick={() => setTab('accounting')}>حسابداری مدیریت</button>
                 <Link href={route('admin.orders.index')}>مدیریت سفارشات</Link>
+                <Link href={route('admin.tickets.index')}>تیکت‌های کاربران</Link>
                 <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}>مدیریت محصولات</button>
                 <button className={tab === 'articles' ? 'active' : ''} onClick={() => setTab('articles')}>مدیریت مقالات</button>
                 <button className={tab === 'shipping' ? 'active' : ''} onClick={() => setTab('shipping')}>مدیریت ارسال</button>
@@ -2007,6 +2022,83 @@ function AccountingPanel({ accounting }: { accounting: Accounting }) {
                 <Link className="primary" href={route('admin.orders.index')}>مدیریت سفارشات</Link>
             </div>
         </section>
+    );
+}
+
+const ticketStatusLabels: Record<string, string> = {
+    open: 'باز ـ در انتظار پاسخ',
+    answered: 'پاسخ داده شد',
+    closed: 'بسته شده',
+};
+
+function TicketsPage({ tickets, admin = false }: { tickets: PaginatedTickets | Ticket[]; admin?: boolean }) {
+    const { props } = usePage<any>();
+    const form = useForm({ subject: '', message: '' });
+    const pagination = Array.isArray(tickets) ? null : tickets;
+    const items = Array.isArray(tickets) ? tickets : tickets?.data || [];
+    const showRoute = (ticket: Ticket) => admin ? route('admin.tickets.show', ticket.id) : route('tickets.show', ticket.id);
+
+    return (
+        <main className={`page tickets-page ${admin ? 'admin' : ''}`}>
+            <div className="admin-page-heading">
+                <div><small>{admin ? 'پنل مدیریت' : 'پشتیبانی ایرگجت'}</small><h1>{admin ? 'تیکت‌های کاربران' : 'تیکت‌های پشتیبانی'}</h1><p>{admin ? 'پیام‌های کاربران را بررسی کنید و پاسخ دهید.' : 'پرسش یا مشکل خود را ثبت کنید و پاسخ پشتیبانی را همین‌جا ببینید.'}</p></div>
+                <Link className="secondary-link" href={admin ? route('admin') : route('account')}>{admin ? 'بازگشت به پنل مدیریت' : 'بازگشت به حساب من'}</Link>
+            </div>
+            {props.flash?.status && <div className="admin-status">{props.flash.status}</div>}
+            {!admin && <form className="ticket-create" onSubmit={(event) => { event.preventDefault(); form.post(route('tickets.store')); }}>
+                <h2>ثبت تیکت جدید</h2>
+                <label><span>موضوع</span><input required value={form.data.subject} onChange={(event) => form.setData('subject', event.target.value)} placeholder="مثلاً پیگیری سفارش یا راهنمایی محصول" /></label>
+                <label><span>شرح درخواست</span><textarea required value={form.data.message} onChange={(event) => form.setData('message', event.target.value)} placeholder="مشکل یا پرسش خود را کامل توضیح دهید." /></label>
+                {Object.keys(form.errors).length > 0 && <div className="form-error-box">{Object.values(form.errors)[0]}</div>}
+                <button className="primary" disabled={form.processing}>{form.processing ? 'در حال ثبت...' : 'ارسال تیکت'}</button>
+            </form>}
+            <section className="ticket-list">
+                <h2>{admin ? 'همه تیکت‌ها' : 'تیکت‌های من'}</h2>
+                {items.length ? items.map((item) => <Link className="ticket-row" href={showRoute(item)} key={item.id}>
+                    <span><b>{item.subject}</b><small dir="ltr">{item.number}</small></span>
+                    {admin && <span><small>کاربر</small><b>{`${item.user?.first_name || ''} ${item.user?.last_name || ''}`.trim() || 'کاربر'}</b></span>}
+                    <span><small>آخرین به‌روزرسانی</small><b>{new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(item.updated_at))}</b></span>
+                    <span><small>پیام‌ها</small><b>{new Intl.NumberFormat('fa-IR').format(item.messages_count || 0)}</b></span>
+                    <strong className={`ticket-status ticket-${item.status}`}>{ticketStatusLabels[item.status]}</strong><i>←</i>
+                </Link>) : <div className="empty-orders">تیکتی ثبت نشده است.</div>}
+            </section>
+            {pagination && pagination.last_page > 1 && <nav className="order-pagination">
+                {pagination.prev_page_url ? <Link href={pagination.prev_page_url}>صفحه قبل</Link> : <span>صفحه قبل</span>}
+                <b>صفحه {new Intl.NumberFormat('fa-IR').format(pagination.current_page)} از {new Intl.NumberFormat('fa-IR').format(pagination.last_page)}</b>
+                {pagination.next_page_url ? <Link href={pagination.next_page_url}>صفحه بعد</Link> : <span>صفحه بعد</span>}
+            </nav>}
+        </main>
+    );
+}
+
+function TicketConversation({ ticket, admin = false }: { ticket: Ticket; admin?: boolean }) {
+    const { props } = usePage<any>();
+    const form = useForm({ message: '' });
+    const replyRoute = admin ? route('admin.tickets.reply', ticket.id) : route('tickets.reply', ticket.id);
+    const closeRoute = admin ? route('admin.tickets.close', ticket.id) : route('tickets.close', ticket.id);
+    const customerName = `${ticket.user?.first_name || ''} ${ticket.user?.last_name || ''}`.trim();
+
+    return (
+        <main className={`page ticket-conversation ${admin ? 'admin' : ''}`}>
+            <div className="admin-page-heading">
+                <div><small dir="ltr">{ticket.number}</small><h1>{ticket.subject}</h1>{admin && <p>{customerName || 'کاربر'} · <span dir="ltr">{ticket.user?.phone_number}</span></p>}</div>
+                <Link className="secondary-link" href={admin ? route('admin.tickets.index') : route('tickets.index')}>بازگشت به تیکت‌ها</Link>
+            </div>
+            {props.flash?.status && <div className="admin-status">{props.flash.status}</div>}
+            <section className="ticket-toolbar"><strong className={`ticket-status ticket-${ticket.status}`}>{ticketStatusLabels[ticket.status]}</strong>{ticket.status !== 'closed' && <button className="danger-button" onClick={() => { if (window.confirm('این تیکت بسته شود؟')) router.patch(closeRoute); }}>بستن تیکت</button>}</section>
+            <section className="ticket-thread">
+                {ticket.messages?.map((message) => {
+                    const fromAdmin = Boolean(message.user?.is_admin);
+                    const sender = fromAdmin ? 'پشتیبانی ایرگجت' : `${message.user?.first_name || ''} ${message.user?.last_name || ''}`.trim() || 'کاربر';
+                    return <article className={fromAdmin ? 'ticket-message staff' : 'ticket-message customer'} key={message.id}><header><b>{sender}</b><time>{new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(message.created_at))}</time></header><p>{message.body}</p></article>;
+                })}
+            </section>
+            {ticket.status === 'closed' ? <div className="ticket-closed-note">این تیکت بسته شده است و امکان ارسال پاسخ جدید وجود ندارد.</div> : <form className="ticket-reply" onSubmit={(event) => { event.preventDefault(); form.post(replyRoute, { preserveScroll: true, onSuccess: () => form.reset() }); }}>
+                <label><span>{admin ? 'پاسخ به کاربر' : 'ارسال پاسخ جدید'}</span><textarea required value={form.data.message} onChange={(event) => form.setData('message', event.target.value)} placeholder="متن پاسخ را بنویسید..." /></label>
+                {form.errors.message && <div className="form-error-box">{form.errors.message}</div>}
+                <button className="primary" disabled={form.processing}>{form.processing ? 'در حال ارسال...' : 'ارسال پاسخ'}</button>
+            </form>}
+        </main>
     );
 }
 

@@ -41,6 +41,11 @@ class User extends Authenticatable
         return $this->hasMany(Order::class);
     }
 
+    public function tickets(): HasMany
+    {
+        return $this->hasMany(Ticket::class);
+    }
+
     public function favoriteProducts(): BelongsToMany
     {
         return $this->belongsToMany(Product::class, 'favorite_product_user')

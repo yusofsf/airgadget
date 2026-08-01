@@ -6,12 +6,14 @@ use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ShippingController;
 use App\Http\Controllers\Admin\TaxonomyController;
+use App\Http\Controllers\Admin\TicketController as AdminTicketController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\FavoriteController;
 use App\Http\Controllers\OrderTrackingController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\StoreController;
+use App\Http\Controllers\TicketController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [StoreController::class, 'home'])->name('home');
@@ -40,6 +42,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/account', [StoreController::class, 'account'])->name('account');
     Route::patch('/account/profile', [AccountController::class, 'update'])->name('account.profile.update');
     Route::post('/favorites/{product}', [FavoriteController::class, 'toggle'])->name('favorites.toggle');
+    Route::get('/tickets', [TicketController::class, 'index'])->name('tickets.index');
+    Route::post('/tickets', [TicketController::class, 'store'])->middleware('throttle:10,1')->name('tickets.store');
+    Route::get('/tickets/{ticket}', [TicketController::class, 'show'])->name('tickets.show');
+    Route::post('/tickets/{ticket}/reply', [TicketController::class, 'reply'])->middleware('throttle:20,1')->name('tickets.reply');
+    Route::patch('/tickets/{ticket}/close', [TicketController::class, 'close'])->name('tickets.close');
 
     Route::middleware('can:manage-store')->group(function () {
         Route::get('/admin', [StoreController::class, 'admin'])->name('admin');
@@ -60,6 +67,10 @@ Route::middleware('auth')->group(function () {
         Route::get('/admin/orders/{order}', [OrderController::class, 'show'])->name('admin.orders.show');
         Route::patch('/admin/orders/{order}/status', [OrderController::class, 'updateStatus'])->name('admin.orders.status');
         Route::get('/admin/orders/{order}/receipt', [OrderController::class, 'receipt'])->name('admin.orders.receipt');
+        Route::get('/admin/tickets', [AdminTicketController::class, 'index'])->name('admin.tickets.index');
+        Route::get('/admin/tickets/{ticket}', [AdminTicketController::class, 'show'])->name('admin.tickets.show');
+        Route::post('/admin/tickets/{ticket}/reply', [AdminTicketController::class, 'reply'])->middleware('throttle:30,1')->name('admin.tickets.reply');
+        Route::patch('/admin/tickets/{ticket}/close', [AdminTicketController::class, 'close'])->name('admin.tickets.close');
     });
 });
 require __DIR__.'/auth.php';
