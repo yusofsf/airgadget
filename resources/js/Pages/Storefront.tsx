@@ -290,6 +290,7 @@ export default function Storefront({
     const [cartNotice, setCartNotice] = useState<string | null>(null);
     const [filter, setFilter] = useState('');
     const [shopFilterForm, setShopFilterForm] = useState<ShopFilters>(shopFilters);
+    const shopFilterTimer = useRef<number | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
     const productItems: Product[] = Array.isArray(products) ? products : products?.data || [];
     const list = productItems.map(toCard);
@@ -327,6 +328,9 @@ export default function Storefront({
     useEffect(() => {
         if (view === 'shop') setShopFilterForm(shopFilters);
     }, [view, shopFilters?.brand_id, shopFilters?.category_id, shopFilters?.min_price, shopFilters?.max_price]);
+    useEffect(() => () => {
+        if (shopFilterTimer.current !== null) window.clearTimeout(shopFilterTimer.current);
+    }, []);
     useEffect(() => {
         setFav(favoriteProductIds.map(Number));
     }, [auth?.user?.id, JSON.stringify(favoriteProductIds)]);
@@ -393,14 +397,31 @@ export default function Storefront({
                 : items.filter((id) => id !== productId));
         }
     };
-    const applyShopFilters = (event: FormEvent) => {
-        event.preventDefault();
-        const params = Object.fromEntries(Object.entries(shopFilterForm).filter(([, value]) => value !== ''));
-        router.get(route('shop'), params, { preserveState: true, preserveScroll: true });
+    const visitShopFilters = (filters: ShopFilters) => {
+        const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ''));
+        router.get(route('shop'), params, { preserveState: true, preserveScroll: true, replace: true });
+    };
+    const updateShopFilter = (field: keyof ShopFilters, value: string, delay = 0) => {
+        const nextFilters = { ...shopFilterForm, [field]: value };
+        setShopFilterForm(nextFilters);
+
+        if (shopFilterTimer.current !== null) window.clearTimeout(shopFilterTimer.current);
+        if (delay > 0) {
+            shopFilterTimer.current = window.setTimeout(() => {
+                shopFilterTimer.current = null;
+                visitShopFilters(nextFilters);
+            }, delay);
+            return;
+        }
+
+        shopFilterTimer.current = null;
+        visitShopFilters(nextFilters);
     };
     const clearShopFilters = () => {
+        if (shopFilterTimer.current !== null) window.clearTimeout(shopFilterTimer.current);
+        shopFilterTimer.current = null;
         setShopFilterForm({ brand_id: '', category_id: '', min_price: '', max_price: '' });
-        router.get(route('shop'), {}, { preserveState: true, preserveScroll: true });
+        router.get(route('shop'), {}, { preserveState: true, preserveScroll: true, replace: true });
     };
     const section =
         view === 'shop'
@@ -541,16 +562,20 @@ export default function Storefront({
                         </main>
                         <section className="benefits">
                             <div>
-                                ⚡ <b>ارسال سریع</b><small>تحویل در سریع‌ترین زمان</small>
+                                <span className="benefit-icon" aria-hidden="true">⚡</span>
+                                <span className="benefit-copy"><b>ارسال سریع</b><small>تحویل در سریع‌ترین زمان</small></span>
                             </div>
                             <div>
-                                ◆ <b>ضمانت اصالت</b><small>کالای اورجینال و باکیفیت</small>
+                                <span className="benefit-icon" aria-hidden="true">◆</span>
+                                <span className="benefit-copy"><b>ضمانت اصالت</b><small>کالای اورجینال و باکیفیت</small></span>
                             </div>
                             <div>
-                                ↻ <b>۷ روز ضمانت بازگشت</b><small>خریدی مطمئن و آسان</small>
+                                <span className="benefit-icon" aria-hidden="true">↻</span>
+                                <span className="benefit-copy"><b>۷ روز ضمانت بازگشت</b><small>خریدی مطمئن و آسان</small></span>
                             </div>
                             <div>
-                                ☏ <b>پشتیبانی واقعی</b><small>{supportPhone}</small>
+                                <span className="benefit-icon" aria-hidden="true">☏</span>
+                                <span className="benefit-copy"><b>پشتیبانی واقعی</b><small>{supportPhone}</small></span>
                             </div>
                         </section>
                         <CategoryCards counts={categoryCounts} />
@@ -617,14 +642,13 @@ export default function Storefront({
                             )}
                             {view !== 'shop' && <Link href="/shop">مشاهده همه ←</Link>}
                         </div>
-                        {view === 'shop' && <form className="shop-filters" onSubmit={applyShopFilters}>
-                            <label><span>برند</span><select value={shopFilterForm.brand_id} onChange={(event) => setShopFilterForm({ ...shopFilterForm, brand_id: event.target.value })}><option value="">همه برندها</option>{brandOptions.map((brand: Brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label>
-                            <label><span>دسته‌بندی</span><select value={shopFilterForm.category_id} onChange={(event) => setShopFilterForm({ ...shopFilterForm, category_id: event.target.value })}><option value="">همه دسته‌ها</option>{categoryOptions.map((category: Category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
-                            <label><span>حداقل قیمت</span><input value={shopFilterForm.min_price} onChange={(event) => setShopFilterForm({ ...shopFilterForm, min_price: event.target.value })} inputMode="numeric" placeholder="تومان" /></label>
-                            <label><span>حداکثر قیمت</span><input value={shopFilterForm.max_price} onChange={(event) => setShopFilterForm({ ...shopFilterForm, max_price: event.target.value })} inputMode="numeric" placeholder="تومان" /></label>
-                            <button className="primary" type="submit">اعمال فیلتر</button>
+                        {view === 'shop' && <div className="shop-filters">
+                            <label><span>برند</span><select value={shopFilterForm.brand_id} onChange={(event) => updateShopFilter('brand_id', event.target.value)}><option value="">همه برندها</option>{brandOptions.map((brand: Brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label>
+                            <label><span>دسته‌بندی</span><select value={shopFilterForm.category_id} onChange={(event) => updateShopFilter('category_id', event.target.value)}><option value="">همه دسته‌ها</option>{categoryOptions.map((category: Category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
+                            <label><span>حداقل قیمت</span><input value={shopFilterForm.min_price} onChange={(event) => updateShopFilter('min_price', event.target.value, 500)} inputMode="numeric" placeholder="تومان" /></label>
+                            <label><span>حداکثر قیمت</span><input value={shopFilterForm.max_price} onChange={(event) => updateShopFilter('max_price', event.target.value, 500)} inputMode="numeric" placeholder="تومان" /></label>
                             {(shopFilterForm.brand_id || shopFilterForm.category_id || shopFilterForm.min_price || shopFilterForm.max_price) && <button className="secondary" type="button" onClick={clearShopFilters}>حذف فیلترها</button>}
-                        </form>}
+                        </div>}
                         {displayed.length ? (
                             <div className="product-grid">
                                 {displayed.map((p) => (
