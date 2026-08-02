@@ -56,6 +56,9 @@ test('dynamic sitemap contains public categories products articles and tags', fu
 
     expect($response->headers->get('content-type'))->toContain('application/xml')
         ->and(simplexml_load_string($content))->not->toBeFalse()
+        ->and($content)->toContain('<loc>'.route('home').'</loc>')
+        ->and($content)->toContain('<changefreq>hourly</changefreq>')
+        ->and($content)->toContain('<priority>1.0</priority>')
         ->and($content)->toContain(route('categories.show', $category))
         ->and($content)->toContain(route('products.show', $activeProduct))
         ->and($content)->toContain(route('articles.show', $publishedArticle))
@@ -64,6 +67,15 @@ test('dynamic sitemap contains public categories products articles and tags', fu
         ->and($content)->not->toContain(route('products.show', $hiddenProduct))
         ->and($content)->not->toContain(route('articles.show', $draftArticle))
         ->and($content)->not->toContain(route('tags.show', $hiddenTag));
+
+    $xml = simplexml_load_string($content);
+    $articleUrl = collect(iterator_to_array($xml->url, false))->first(
+        fn ($url) => (string) $url->loc === route('articles.show', $publishedArticle)
+    );
+
+    expect((string) $articleUrl->changefreq)->toBe('monthly')
+        ->and((string) $articleUrl->priority)->toBe('0.64')
+        ->and((string) $articleUrl->lastmod)->not->toBe('');
 });
 
 test('category and tag sitemap urls are real indexable pages', function () {

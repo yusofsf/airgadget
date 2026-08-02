@@ -6,6 +6,8 @@
 @if(!empty($url['lastmod']))
         <lastmod>{{ $url['lastmod'] }}</lastmod>
 @endif
+        <changefreq>{{ $url['changefreq'] }}</changefreq>
+        <priority>{{ $url['priority'] }}</priority>
     </url>
 @endforeach
 </urlset>

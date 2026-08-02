@@ -14,47 +14,47 @@ class SitemapController extends Controller
     public function __invoke(): Response
     {
         $urls = collect([
-            ['loc' => route('home')],
-            ['loc' => route('shop')],
-            ['loc' => route('articles.index')],
-            ['loc' => route('about')],
-            ['loc' => route('contact')],
-            ['loc' => route('terms')],
+            $this->sitemapUrl(route('home'), changefreq: 'hourly', priority: '1.0'),
+            $this->sitemapUrl(route('shop')),
+            $this->sitemapUrl(route('articles.index')),
+            $this->sitemapUrl(route('about')),
+            $this->sitemapUrl(route('contact')),
+            $this->sitemapUrl(route('terms')),
         ]);
 
         Category::query()
             ->whereHas('products', fn ($query) => $query->where('is_active', true))
             ->withMax(['products' => fn ($query) => $query->where('is_active', true)], 'updated_at')
             ->get()
-            ->each(fn (Category $category) => $urls->push([
-                'loc' => route('categories.show', $category),
-                'lastmod' => $this->lastModified($category->products_max_updated_at ?: $category->updated_at),
-            ]));
+            ->each(fn (Category $category) => $urls->push($this->sitemapUrl(
+                route('categories.show', $category),
+                $category->products_max_updated_at ?: $category->updated_at,
+            )));
 
         Product::query()
             ->where('is_active', true)
             ->get(['slug', 'updated_at'])
-            ->each(fn (Product $product) => $urls->push([
-                'loc' => route('products.show', $product),
-                'lastmod' => $this->lastModified($product->updated_at),
-            ]));
+            ->each(fn (Product $product) => $urls->push($this->sitemapUrl(
+                route('products.show', $product),
+                $product->updated_at,
+            )));
 
         Article::query()
             ->where('is_published', true)
             ->get(['slug', 'updated_at', 'published_at'])
-            ->each(fn (Article $article) => $urls->push([
-                'loc' => route('articles.show', $article),
-                'lastmod' => $this->lastModified($article->updated_at ?: $article->published_at),
-            ]));
+            ->each(fn (Article $article) => $urls->push($this->sitemapUrl(
+                route('articles.show', $article),
+                $article->updated_at ?: $article->published_at,
+            )));
 
         ArticleCategory::query()
             ->whereHas('articles', fn ($query) => $query->where('is_published', true))
             ->withMax(['articles' => fn ($query) => $query->where('is_published', true)], 'updated_at')
             ->get()
-            ->each(fn (ArticleCategory $category) => $urls->push([
-                'loc' => route('article-categories.show', $category),
-                'lastmod' => $this->lastModified($category->articles_max_updated_at ?: $category->updated_at),
-            ]));
+            ->each(fn (ArticleCategory $category) => $urls->push($this->sitemapUrl(
+                route('article-categories.show', $category),
+                $category->articles_max_updated_at ?: $category->updated_at,
+            )));
 
         Tag::query()
             ->where(fn ($query) => $query
@@ -63,14 +63,14 @@ class SitemapController extends Controller
             ->withMax(['articles' => fn ($query) => $query->where('is_published', true)], 'updated_at')
             ->withMax(['products' => fn ($query) => $query->where('is_active', true)], 'updated_at')
             ->get()
-            ->each(fn (Tag $tag) => $urls->push([
-                'loc' => route('tags.show', $tag),
-                'lastmod' => $this->lastModified(collect([
+            ->each(fn (Tag $tag) => $urls->push($this->sitemapUrl(
+                route('tags.show', $tag),
+                collect([
                     $tag->articles_max_updated_at,
                     $tag->products_max_updated_at,
                     $tag->updated_at,
-                ])->filter()->max()),
-            ]));
+                ])->filter()->max(),
+            )));
 
         return response()
             ->view('sitemap', ['urls' => $urls])
@@ -80,5 +80,19 @@ class SitemapController extends Controller
     private function lastModified($date): ?string
     {
         return $date ? \Illuminate\Support\Carbon::parse($date)->toAtomString() : null;
+    }
+
+    private function sitemapUrl(
+        string $location,
+        $lastModified = null,
+        string $changefreq = 'monthly',
+        string $priority = '0.64',
+    ): array {
+        return [
+            'loc' => $location,
+            'lastmod' => $this->lastModified($lastModified),
+            'changefreq' => $changefreq,
+            'priority' => $priority,
+        ];
     }
 }
