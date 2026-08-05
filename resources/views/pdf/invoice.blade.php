@@ -8,6 +8,7 @@
         .brand { font-size: 25px; font-weight: bold; direction: ltr; text-align: left; color: #17212b; }
         .brand span { color: #ee6a42; }
         h1 { font-size: 18px; margin: 0 0 8px; }
+        h2 { font-size: 13px; margin: 0 0 7px; color: #26343f; }
         .muted { color: #68757f; }
         .meta { background: #f5f7f8; border-radius: 8px; padding: 12px; margin-bottom: 18px; }
         .meta table, .totals { width: 100%; border-collapse: collapse; }
@@ -43,6 +44,7 @@
         <div class="muted">تاریخ ثبت: {{ optional($order->created_at)->format('Y/m/d H:i') }}</div>
     </div>
 
+    <h2>مشخصات خریدار (گیرنده)</h2>
     <div class="meta">
         <table>
             <tr>
@@ -69,6 +71,25 @@
             @endif
         </table>
     </div>
+
+    @if($sender)
+        <h2>مشخصات فروشنده (فرستنده)</h2>
+        <div class="meta">
+            <table>
+                <tr>
+                    <td><strong>نام و نام خانوادگی:</strong> {{ trim($sender->first_name.' '.$sender->last_name) }}</td>
+                    <td><strong>شماره موبایل:</strong> {{ $sender->phone_number }}</td>
+                </tr>
+                <tr>
+                    <td><strong>کد پستی:</strong> {{ $sender->postal_code ?: '—' }}</td>
+                    <td><strong>نام فروشگاه:</strong> ایرگجت</td>
+                </tr>
+                <tr>
+                    <td colspan="2"><strong>آدرس فرستنده:</strong> {{ $sender->address ?: '—' }}</td>
+                </tr>
+            </table>
+        </div>
+    @endif
 
     <table class="items">
         <thead>

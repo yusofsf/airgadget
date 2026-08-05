@@ -5,12 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\StoreSetting;
+use App\Models\User;
 use App\Services\ZarinpalGateway;
 use App\Services\OrderReservationService;
 use App\Support\Phone;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -198,6 +200,7 @@ class CheckoutController extends Controller
             'view' => 'invoice',
             'invoice' => $order->load('items'),
             'invoiceShipping' => collect(StoreSetting::shippingMethods())->firstWhere('code', $order->shipping_method),
+            'invoiceSender' => $this->invoiceSender(),
         ]);
     }
 
@@ -206,11 +209,15 @@ class CheckoutController extends Controller
         $this->authorizeToken($order, $token);
         $order->load('items');
         $shipping = collect(StoreSetting::shippingMethods())->firstWhere('code', $order->shipping_method);
-        $html = view('pdf.invoice', compact('order', 'shipping'))->render();
+        $sender = $this->invoiceSender();
+        $html = view('pdf.invoice', compact('order', 'shipping', 'sender'))->render();
+        $tempDir = storage_path('app/mpdf');
+        File::ensureDirectoryExists($tempDir);
+
         $pdf = new Mpdf([
             'mode' => 'utf-8',
             'format' => 'A4',
-            'tempDir' => storage_path('framework/cache'),
+            'tempDir' => $tempDir,
             'default_font' => 'dejavusans',
             'directionality' => 'rtl',
             'margin_top' => 12,
@@ -246,6 +253,14 @@ class CheckoutController extends Controller
     private function authorizeToken(Order $order, string $token): void
     {
         abort_unless($order->invoice_token && hash_equals($order->invoice_token, $token), 404);
+    }
+
+    private function invoiceSender(): ?User
+    {
+        return User::query()
+            ->where('is_admin', true)
+            ->oldest('id')
+            ->first(['id', 'first_name', 'last_name', 'phone_number', 'postal_code', 'address']);
     }
 
     private function englishDigits(mixed $value): string

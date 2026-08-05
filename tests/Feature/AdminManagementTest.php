@@ -68,7 +68,14 @@ test('non admins cannot access order management', function () {
 });
 
 test('admin can create an order and download its invoice pdf', function () {
-    $admin = User::factory()->create(['is_admin' => true]);
+    $admin = User::factory()->create([
+        'is_admin' => true,
+        'first_name' => 'مدیر',
+        'last_name' => 'فروشگاه',
+        'phone_number' => '09205850190',
+        'postal_code' => '9187654321',
+        'address' => 'مشهد، عبدالمطلب ۳۵',
+    ]);
     $customer = User::factory()->create([
         'first_name' => 'علی',
         'last_name' => 'رضایی',
@@ -109,11 +116,22 @@ test('admin can create an order and download its invoice pdf', function () {
         ->and($order->items)->toHaveCount(1)
         ->and($product->fresh()->stock)->toBe(3);
 
+    $this->get(route('orders.invoice', ['order' => $order, 'token' => $order->invoice_token]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('invoiceSender.first_name', 'مدیر')
+            ->where('invoiceSender.last_name', 'فروشگاه')
+            ->where('invoiceSender.phone_number', '09205850190')
+            ->where('invoiceSender.postal_code', '9187654321')
+            ->where('invoiceSender.address', 'مشهد، عبدالمطلب ۳۵')
+        );
+
     $pdf = $this->get(route('orders.invoice.pdf', ['order' => $order, 'token' => $order->invoice_token]));
     $pdf->assertOk()
         ->assertHeader('content-type', 'application/pdf')
         ->assertHeader('content-disposition', "attachment; filename=\"invoice-{$order->number}.pdf\"");
     expect($pdf->getContent())->toStartWith('%PDF-');
+    expect(storage_path('app/mpdf'))->toBeDirectory();
 });
 
 test('admin can see registered users and non admins cannot access the list', function () {

@@ -54,6 +54,7 @@ type Article = {
 };
 type ShippingMethod = { code: string; name: string; description: string; cost: number; is_active: boolean };
 type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; tax?: number; total: number; shipping_method: string; payment_method?: string; payment_receipt?: string; card_to_card_amount?: number; payment_reference?: string; paid_at?: string; created_at: string; updated_at?: string; items_count?: number; items_sum_quantity?: number; address?: { first_name?: string; last_name?: string; customer_name?: string; phone?: string; postal_code?: string; province?: string; city?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; price?: number; quantity: number }[]; user?: { first_name?: string; last_name?: string; phone_number?: string; email?: string } };
+type InvoiceSender = { first_name?: string | null; last_name?: string | null; phone_number?: string | null; postal_code?: string | null; address?: string | null };
 type PaginatedOrders = { data: Order[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
 type RegisteredUser = { id: number; first_name?: string | null; last_name?: string | null; phone_number?: string | null; postal_code?: string | null; address?: string | null; email?: string | null; is_admin: boolean; created_at: string };
 type PaginatedUsers = { data: RegisteredUser[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
@@ -266,6 +267,7 @@ export default function Storefront({
     adminProduct,
     invoice,
     invoiceShipping,
+    invoiceSender,
     trackedOrder,
     trackingError,
     paymentResult,
@@ -617,7 +619,7 @@ export default function Storefront({
                 ) : view === 'checkout' ? (
                     <Checkout cart={cart} shippingMethods={shippingMethods} clearCart={clearCart} holdCartForPayment={holdCartForPayment} releaseCartHold={releaseCartHold} auth={auth} cardToCard={cardToCard} />
                 ) : view === 'invoice' ? (
-                    <Invoice order={invoice} shipping={invoiceShipping} clearCart={clearCart} />
+                    <Invoice order={invoice} shipping={invoiceShipping} sender={invoiceSender} clearCart={clearCart} />
                 ) : view === 'tracking' ? (
                     <OrderTracking order={trackedOrder} error={trackingError} />
                 ) : view === 'payment-result' ? (
@@ -1252,7 +1254,7 @@ function Checkout({ cart, shippingMethods, clearCart, auth, cardToCard }: { cart
     );
 }
 
-function Invoice({ order, shipping, clearCart }: { order: Order; shipping?: ShippingMethod; clearCart: () => void }) {
+function Invoice({ order, shipping, sender, clearCart }: { order: Order; shipping?: ShippingMethod; sender?: InvoiceSender | null; clearCart: () => void }) {
     const { props } = usePage<any>();
     const labels: Record<string, string> = { pending_payment: 'در انتظار پرداخت', unpaid: 'پرداخت‌نشده', pending_review: 'ثبت شد', processing: 'تأیید شده', completed: 'ارسال شد', cancelled: 'لغو شده', failed: 'پرداخت ناموفق', refunded: 'مرجوع شده' };
     useEffect(() => {
@@ -1273,6 +1275,13 @@ function Invoice({ order, shipping, clearCart }: { order: Order; shipping?: Ship
                     {order.payment_method === 'card_to_card' && <p><b>روش پرداخت:</b> کارت‌به‌کارت</p>}
                     <p className="invoice-address"><b>آدرس:</b> {order.address?.full}</p>
                 </div>
+                {sender && <div className="invoice-meta invoice-sender">
+                    <p className="invoice-party-title"><b>مشخصات فروشنده (فرستنده)</b></p>
+                    <p><b>نام:</b> {[sender.first_name, sender.last_name].filter(Boolean).join(' ')}</p>
+                    <p><b>موبایل:</b> {sender.phone_number || '—'}</p>
+                    <p><b>کد پستی:</b> {sender.postal_code || '—'}</p>
+                    <p className="invoice-address"><b>آدرس فرستنده:</b> {sender.address || '—'}</p>
+                </div>}
                 <div className="invoice-table">
                     <div className="invoice-row invoice-head"><span>شرح کالا</span><span>تعداد</span><span>قیمت واحد</span><span>جمع</span></div>
                     {order.items?.map((item) => <div className="invoice-row" key={item.id || item.sku}><span>{item.name}<small>{item.sku}</small></span><span>{item.quantity}</span><span>{toman(Number(item.price || 0))}</span><span>{toman(Number(item.price || 0) * item.quantity)}</span></div>)}
