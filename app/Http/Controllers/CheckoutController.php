@@ -23,6 +23,12 @@ class CheckoutController extends Controller
 {
     public function store(Request $request, OrderReservationService $reservations): SymfonyResponse
     {
+        if (! $request->user()?->hasCompleteShippingAddress()) {
+            return redirect()
+                ->route('account', ['complete_profile' => 1])
+                ->with('status', 'برای ثبت سفارش، ابتدا آدرس و کدپستی را در حساب کاربری وارد کنید.');
+        }
+
         $reservations->expireUnpaidOrders();
         $request->merge([
             'phone' => Phone::normalize($request->input('phone')),

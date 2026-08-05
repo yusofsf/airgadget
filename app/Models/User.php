@@ -52,6 +52,12 @@ class User extends Authenticatable
             ->withTimestamps();
     }
 
+    public function hasCompleteShippingAddress(): bool
+    {
+        return filled($this->address)
+            && preg_match('/^\d{10}$/', (string) $this->postal_code) === 1;
+    }
+
     /**
      * The attributes that should be hidden for serialization.
      *

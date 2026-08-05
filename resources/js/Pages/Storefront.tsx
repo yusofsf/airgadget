@@ -55,7 +55,7 @@ type Article = {
 type ShippingMethod = { code: string; name: string; description: string; cost: number; is_active: boolean };
 type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; tax?: number; total: number; shipping_method: string; payment_method?: string; payment_receipt?: string; card_to_card_amount?: number; payment_reference?: string; paid_at?: string; created_at: string; updated_at?: string; items_count?: number; items_sum_quantity?: number; address?: { first_name?: string; last_name?: string; customer_name?: string; phone?: string; postal_code?: string; province?: string; city?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; price?: number; quantity: number }[]; user?: { first_name?: string; last_name?: string; phone_number?: string; email?: string } };
 type PaginatedOrders = { data: Order[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
-type RegisteredUser = { id: number; first_name?: string | null; last_name?: string | null; phone_number?: string | null; postal_code?: string | null; address?: string | null; email: string; is_admin: boolean; created_at: string };
+type RegisteredUser = { id: number; first_name?: string | null; last_name?: string | null; phone_number?: string | null; postal_code?: string | null; address?: string | null; email?: string | null; is_admin: boolean; created_at: string };
 type PaginatedUsers = { data: RegisteredUser[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
 type TicketMessage = { id: number; body: string; created_at: string; user?: { id: number; first_name?: string; last_name?: string; is_admin?: boolean } | null };
 type Ticket = { id: number; number: string; subject: string; status: 'open' | 'answered' | 'closed'; created_at: string; updated_at: string; messages_count?: number; messages?: TicketMessage[]; user?: { id: number; first_name?: string; last_name?: string; phone_number?: string; email?: string } };
@@ -278,6 +278,7 @@ export default function Storefront({
     categoryOptions = [],
     favoriteProductIds = [],
     favoriteProducts = [],
+    completeProfile = false,
     tickets = [],
     ticket,
 }: any) {
@@ -608,7 +609,7 @@ export default function Storefront({
                 ) : view === 'admin-product' ? (
                     <AdminProductEditor product={adminProduct} categories={categories} brands={brands} />
                 ) : view === 'account' ? (
-                    <Account orders={orders} auth={auth} favoriteProducts={favoriteProducts} favoriteIds={fav} add={addToCart} toggleFavorite={toggleFavorite} />
+                    <Account orders={orders} auth={auth} favoriteProducts={favoriteProducts} favoriteIds={fav} add={addToCart} toggleFavorite={toggleFavorite} completeProfile={completeProfile} />
                 ) : view === 'tickets' ? (
                     <TicketsPage tickets={tickets} />
                 ) : view === 'ticket' ? (
@@ -1096,9 +1097,9 @@ function StaticPage({ type }: any) {
     );
 }
 
-function Account({ orders, auth, favoriteProducts, favoriteIds, add, toggleFavorite }: { orders: Order[]; auth: any; favoriteProducts: Product[]; favoriteIds: number[]; add: (product: CardProduct) => void; toggleFavorite: (productId: number) => void }) {
+function Account({ orders, auth, favoriteProducts, favoriteIds, add, toggleFavorite, completeProfile }: { orders: Order[]; auth: any; favoriteProducts: Product[]; favoriteIds: number[]; add: (product: CardProduct) => void; toggleFavorite: (productId: number) => void; completeProfile: boolean }) {
     const { props } = usePage<any>();
-    const [section, setSection] = useState<'orders' | 'favorites' | 'profile'>('orders');
+    const [section, setSection] = useState<'orders' | 'favorites' | 'profile'>(completeProfile ? 'profile' : 'orders');
     const profile = useForm({
         first_name: auth?.user?.first_name || '',
         last_name: auth?.user?.last_name || '',

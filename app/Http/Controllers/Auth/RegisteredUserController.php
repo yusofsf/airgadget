@@ -4,23 +4,20 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\Phone;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
-use App\Support\Phone;
+use Illuminate\Validation\Rules;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class RegisteredUserController extends Controller
 {
-    /**
-     * Display the registration view.
-     */
     public function create(Request $request): Response
     {
         return Inertia::render('Auth/Register', [
@@ -28,48 +25,41 @@ class RegisteredUserController extends Controller
         ]);
     }
 
-    /**
-     * Handle an incoming registration request.
-     *
-     * @throws \Illuminate\Validation\ValidationException
-     */
     public function store(Request $request): RedirectResponse
     {
         $request->merge([
             'phone_number' => Phone::normalize($request->input('phone_number')),
-            'postal_code' => strtr((string) $request->input('postal_code'), [
-                '۰'=>'0', '۱'=>'1', '۲'=>'2', '۳'=>'3', '۴'=>'4',
-                '۵'=>'5', '۶'=>'6', '۷'=>'7', '۸'=>'8', '۹'=>'9',
-            ]),
+            'email' => $request->filled('email') ? strtolower((string) $request->input('email')) : null,
         ]);
+
         $validated = $request->validate([
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
             'phone_number' => ['required', 'regex:/^09\d{9}$/', Rule::unique(User::class)],
-            'postal_code' => ['required', 'regex:/^\d{10}$/'],
-            'address' => ['required', 'string', 'max:1000'],
-            'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
+            'email' => ['nullable', 'string', 'email', 'max:255', Rule::unique(User::class)],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
-        ], ['phone_number.regex' => 'شماره موبایل را به‌صورت ۰۹xxxxxxxxx وارد کنید.', 'phone_number.unique' => 'این شماره موبایل قبلاً ثبت شده است.']);
+        ], [
+            'phone_number.regex' => 'شماره موبایل را به‌صورت ۰۹xxxxxxxxx وارد کنید.',
+            'phone_number.unique' => 'این شماره موبایل قبلاً ثبت شده است.',
+        ]);
 
         $isAdmin = hash_equals(Phone::normalize(config('admin.phone')), $validated['phone_number']);
         $attributes = [
             'first_name' => $validated['first_name'],
             'last_name' => $validated['last_name'],
             'phone_number' => $validated['phone_number'],
-            'postal_code' => $validated['postal_code'],
-            'address' => $validated['address'],
-            'email' => $validated['email'],
+            'email' => $validated['email'] ?? null,
             'password' => Hash::make($validated['password']),
             'is_admin' => $isAdmin,
         ];
+
         if (Schema::hasColumn('users', 'name')) {
             $attributes['name'] = $validated['first_name'].' '.$validated['last_name'];
         }
+
         $user = User::create($attributes);
 
         event(new Registered($user));
-
         Auth::login($user);
 
         return redirect()->route($isAdmin ? 'admin' : 'account');

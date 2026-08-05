@@ -188,11 +188,18 @@ class StoreController extends Controller
             'view' => 'account',
             'orders' => $orders,
             'favoriteProducts' => $favorites,
+            'completeProfile' => request()->boolean('complete_profile'),
         ]);
     }
 
     public function checkout()
     {
+        if (! request()->user()->hasCompleteShippingAddress()) {
+            return redirect()
+                ->route('account', ['complete_profile' => 1])
+                ->with('status', 'برای ثبت سفارش، ابتدا آدرس و کدپستی را در حساب کاربری وارد کنید.');
+        }
+
         return Inertia::render('Storefront', [
             'view' => 'checkout',
             'shippingMethods' => collect(StoreSetting::shippingMethods())->where('is_active', true)->values(),

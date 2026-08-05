@@ -33,13 +33,13 @@ Route::get('/about-us', [StoreController::class, 'page'])->defaults('page', 'abo
 Route::get('/contact-us', [StoreController::class, 'page'])->defaults('page', 'contact')->name('contact');
 Route::post('/contact-us', ContactController::class)->middleware('throttle:5,1')->name('contact.store');
 Route::get('/terms', [StoreController::class, 'page'])->defaults('page', 'terms')->name('terms');
-Route::get('/checkout', [StoreController::class, 'checkout'])->name('checkout');
-Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1')->name('checkout.store');
 Route::get('/orders/{order}/invoice/{token}', [CheckoutController::class, 'invoice'])->name('orders.invoice');
 Route::get('/orders/{order}/invoice/{token}/pdf', [CheckoutController::class, 'invoicePdf'])->name('orders.invoice.pdf');
 Route::get('/payments/zarinpal/callback/{order}/{token}', [CheckoutController::class, 'callback'])->name('payments.zarinpal.callback');
 Route::get('/track-order', OrderTrackingController::class)->middleware('throttle:20,1')->name('orders.track');
 Route::middleware('auth')->group(function () {
+    Route::get('/checkout', [StoreController::class, 'checkout'])->name('checkout');
+    Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1')->name('checkout.store');
     Route::get('/account', [StoreController::class, 'account'])->name('account');
     Route::patch('/account/profile', [AccountController::class, 'update'])->name('account.profile.update');
     Route::post('/favorites/{product}', [FavoriteController::class, 'toggle'])->name('favorites.toggle');
