@@ -55,7 +55,7 @@ type Article = {
 type ShippingMethod = { code: string; name: string; description: string; cost: number; is_active: boolean };
 type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; tax?: number; total: number; shipping_method: string; payment_method?: string; payment_receipt?: string; card_to_card_amount?: number; payment_reference?: string; paid_at?: string; created_at: string; updated_at?: string; items_count?: number; items_sum_quantity?: number; address?: { first_name?: string; last_name?: string; customer_name?: string; phone?: string; postal_code?: string; province?: string; city?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; price?: number; quantity: number }[]; user?: { first_name?: string; last_name?: string; phone_number?: string; email?: string } };
 type PaginatedOrders = { data: Order[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
-type RegisteredUser = { id: number; first_name?: string | null; last_name?: string | null; phone_number?: string | null; email: string; is_admin: boolean; created_at: string };
+type RegisteredUser = { id: number; first_name?: string | null; last_name?: string | null; phone_number?: string | null; postal_code?: string | null; address?: string | null; email: string; is_admin: boolean; created_at: string };
 type PaginatedUsers = { data: RegisteredUser[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
 type TicketMessage = { id: number; body: string; created_at: string; user?: { id: number; first_name?: string; last_name?: string; is_admin?: boolean } | null };
 type Ticket = { id: number; number: string; subject: string; status: 'open' | 'answered' | 'closed'; created_at: string; updated_at: string; messages_count?: number; messages?: TicketMessage[]; user?: { id: number; first_name?: string; last_name?: string; phone_number?: string; email?: string } };
@@ -259,6 +259,9 @@ export default function Storefront({
     accounting = {},
     orders = [],
     users = [],
+    orderProducts = [],
+    orderUsers = [],
+    orderShippingMethods = [],
     adminOrder,
     adminProduct,
     invoice,
@@ -466,7 +469,7 @@ export default function Storefront({
                         <Link href="/contact-us">تماس با ما</Link>
                     </nav>
                     <div className="head-actions">
-                        <Link className="account-entry" href={auth?.user ? (auth.user.is_admin ? '/admin' : '/account') : '/login'}>
+                        <Link className="account-entry" href={auth?.user ? '/account' : '/login'}>
                             {auth?.user ? 'حساب من' : 'ورود و ثبت‌نام'}
                         </Link>
                         {auth?.user && <button className="header-logout" type="button" onClick={() => router.post(route('logout'))}>خروج</button>}
@@ -593,7 +596,7 @@ export default function Storefront({
                 ) : view === 'admin' ? (
                     <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} tags={tags} articleCategories={articleCategories} accounting={accounting} shippingMethods={shippingMethods} />
                 ) : view === 'admin-orders' ? (
-                    <AdminOrders orders={orders} />
+                    <AdminOrders orders={orders} products={orderProducts} users={orderUsers} shippingMethods={orderShippingMethods} />
                 ) : view === 'admin-users' ? (
                     <AdminUsers users={users} />
                 ) : view === 'admin-order' ? (
@@ -2154,9 +2157,41 @@ const paymentLabels: Record<string, string> = {
     card_to_card: 'کارت به کارت',
 };
 
-function AdminOrders({ orders }: { orders: PaginatedOrders | Order[] }) {
+function AdminOrders({ orders, products, users, shippingMethods }: { orders: PaginatedOrders | Order[]; products: Product[]; users: RegisteredUser[]; shippingMethods: ShippingMethod[] }) {
     const pagination = Array.isArray(orders) ? null : orders;
     const items = Array.isArray(orders) ? orders : orders?.data || [];
+    const { props } = usePage<any>();
+    const [creating, setCreating] = useState(false);
+    const form = useForm({
+        user_id: '',
+        first_name: '',
+        last_name: '',
+        phone: '',
+        postal_code: '',
+        address: '',
+        shipping_method: shippingMethods[0]?.code || '',
+        status: 'pending_review',
+        items: [{ product_id: '', quantity: 1 }],
+    });
+    const updateOrderItem = (index: number, values: Partial<{ product_id: string; quantity: number }>) => {
+        form.setData('items', form.data.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...values } : item));
+    };
+    const selectedTotal = form.data.items.reduce((total, item) => {
+        const product = products.find((candidate) => candidate.id === Number(item.product_id));
+        return total + (product ? Number(product.sale_price || product.price) * Number(item.quantity || 0) : 0);
+    }, 0) + Number(shippingMethods.find((method) => method.code === form.data.shipping_method)?.cost || 0);
+    const selectUser = (userId: string) => {
+        const user = users.find((candidate) => candidate.id === Number(userId));
+        form.setData((data) => ({
+            ...data,
+            user_id: userId,
+            first_name: user?.first_name || '',
+            last_name: user?.last_name || '',
+            phone: user?.phone_number || '',
+            postal_code: user?.postal_code || '',
+            address: user?.address || '',
+        }));
+    };
 
     return (
         <main className="page admin admin-orders-page">
@@ -2166,8 +2201,38 @@ function AdminOrders({ orders }: { orders: PaginatedOrders | Order[] }) {
                     <h1>مدیریت سفارشات</h1>
                     <p>فهرست خلاصه همه سفارش‌ها؛ برای مشاهده اطلاعات کامل روی هر سفارش کلیک کنید.</p>
                 </div>
-                <Link className="secondary-link" href={route('admin')}>بازگشت به پنل مدیریت</Link>
+                <div className="admin-order-heading-actions">
+                    <button className="primary" type="button" onClick={() => setCreating((value) => !value)}>{creating ? 'بستن فرم' : 'ایجاد سفارش جدید'}</button>
+                    <Link className="secondary-link" href={route('admin')}>بازگشت به پنل مدیریت</Link>
+                </div>
             </div>
+            {props.flash?.status && <div className="admin-status">{props.flash.status}</div>}
+            {creating && <form className="admin-order-create" onSubmit={(event) => { event.preventDefault(); form.post(route('admin.orders.store')); }}>
+                <div className="admin-order-create-title"><div><h2>ایجاد سفارش توسط ادمین</h2><p>مشتری، کالاها و روش ارسال را انتخاب کنید؛ مبلغ و موجودی از اطلاعات فعلی فروشگاه محاسبه می‌شود.</p></div><strong>{toman(selectedTotal)}</strong></div>
+                <label className="wide"><span>اتصال به حساب کاربری (اختیاری)</span><select value={form.data.user_id} onChange={(event) => selectUser(event.target.value)}><option value="">سفارش مهمان</option>{users.map((user) => <option value={user.id} key={user.id}>{`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email} — {user.phone_number}</option>)}</select></label>
+                <div className="admin-order-customer-fields">
+                    <label><span>نام</span><input required value={form.data.first_name} onChange={(event) => form.setData('first_name', event.target.value)} /></label>
+                    <label><span>نام خانوادگی</span><input required value={form.data.last_name} onChange={(event) => form.setData('last_name', event.target.value)} /></label>
+                    <label><span>شماره موبایل</span><input required dir="ltr" inputMode="tel" value={form.data.phone} onChange={(event) => form.setData('phone', event.target.value)} /></label>
+                    <label><span>کد پستی</span><input required dir="ltr" inputMode="numeric" value={form.data.postal_code} onChange={(event) => form.setData('postal_code', event.target.value)} /></label>
+                    <label className="wide"><span>آدرس کامل</span><textarea required value={form.data.address} onChange={(event) => form.setData('address', event.target.value)} /></label>
+                </div>
+                <div className="admin-order-create-items">
+                    <h3>اقلام سفارش</h3>
+                    {form.data.items.map((item, index) => <div className="admin-order-create-item" key={index}>
+                        <select required value={item.product_id} onChange={(event) => updateOrderItem(index, { product_id: event.target.value })}><option value="">انتخاب محصول</option>{products.map((product) => <option value={product.id} key={product.id}>{product.name} — موجودی {product.stock} — {toman(Number(product.sale_price || product.price))}</option>)}</select>
+                        <input required type="number" min="1" max={products.find((product) => product.id === Number(item.product_id))?.stock || 100} value={item.quantity} onChange={(event) => updateOrderItem(index, { quantity: Number(event.target.value) })} aria-label="تعداد" />
+                        <button type="button" className="danger-button" disabled={form.data.items.length === 1} onClick={() => form.setData('items', form.data.items.filter((_, itemIndex) => itemIndex !== index))}>حذف</button>
+                    </div>)}
+                    <button type="button" className="secondary-link add-order-item" onClick={() => form.setData('items', [...form.data.items, { product_id: '', quantity: 1 }])}>افزودن کالا</button>
+                </div>
+                <div className="admin-order-options">
+                    <label><span>روش ارسال</span><select required value={form.data.shipping_method} onChange={(event) => form.setData('shipping_method', event.target.value)}>{shippingMethods.map((method) => <option value={method.code} key={method.code}>{method.name} — {Number(method.cost) ? toman(Number(method.cost)) : 'رایگان'}</option>)}</select></label>
+                    <label><span>وضعیت اولیه</span><select value={form.data.status} onChange={(event) => form.setData('status', event.target.value)}><option value="pending_review">ثبت‌شده / در انتظار بررسی</option><option value="processing">تأیید و پرداخت‌شده</option><option value="completed">تکمیل و ارسال‌شده</option></select></label>
+                </div>
+                {Object.keys(form.errors).length > 0 && <div className="form-error-box">{Object.values(form.errors)[0]}</div>}
+                <button className="primary" disabled={form.processing || products.length === 0 || shippingMethods.length === 0}>{form.processing ? 'در حال ایجاد...' : 'ایجاد سفارش و صدور فاکتور'}</button>
+            </form>}
             <div className="order-summary-list">
                 {items.length ? items.map((order) => (
                     <Link className="order-summary-row" href={route('admin.orders.show', order.id)} key={order.id}>
@@ -2395,7 +2460,7 @@ function AccountDrawer({ auth, close }: any) {
             {auth?.user ? (
                 <>
                     <p>{auth.user.first_name || 'کاربر'} عزیز، خوش آمدید.</p>
-                    <Link className="primary full" href={auth.user.is_admin ? '/admin' : '/account'}>
+                    <Link className="primary full" href="/account">
                         ورود به حساب من
                     </Link>
                 </>

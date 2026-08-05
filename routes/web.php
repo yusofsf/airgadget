@@ -65,6 +65,7 @@ Route::middleware('auth')->group(function () {
         Route::delete('/admin/article-categories/{articleCategory}', [TaxonomyController::class, 'destroyArticleCategory'])->name('admin.article-categories.destroy');
         Route::put('/admin/shipping', [ShippingController::class, 'update'])->name('admin.shipping.update');
         Route::get('/admin/orders', [OrderController::class, 'index'])->name('admin.orders.index');
+        Route::post('/admin/orders', [OrderController::class, 'store'])->name('admin.orders.store');
         Route::get('/admin/users', [AdminUserController::class, 'index'])->name('admin.users.index');
         Route::get('/admin/orders/{order}', [OrderController::class, 'show'])->name('admin.orders.show');
         Route::patch('/admin/orders/{order}/status', [OrderController::class, 'updateStatus'])->name('admin.orders.status');

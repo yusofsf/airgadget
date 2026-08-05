@@ -33,6 +33,33 @@ test('profile information can be updated', function () {
     $this->assertNull($user->email_verified_at);
 });
 
+test('store account details can be updated by each authenticated user', function () {
+    $user = User::factory()->create([
+        'phone_number' => '09121111111',
+        'postal_code' => '1111111111',
+        'address' => 'آدرس قبلی',
+    ]);
+
+    $this->actingAs($user)
+        ->patch(route('account.profile.update'), [
+            'first_name' => 'مریم',
+            'last_name' => 'احمدی',
+            'phone_number' => '09122222222',
+            'postal_code' => '1234567890',
+            'address' => 'مشهد، آدرس جدید',
+            'email' => 'maryam@example.com',
+        ])
+        ->assertSessionHasNoErrors();
+
+    $user->refresh();
+    expect($user->first_name)->toBe('مریم')
+        ->and($user->last_name)->toBe('احمدی')
+        ->and($user->phone_number)->toBe('09122222222')
+        ->and($user->postal_code)->toBe('1234567890')
+        ->and($user->address)->toBe('مشهد، آدرس جدید')
+        ->and($user->email)->toBe('maryam@example.com');
+});
+
 test('email verification status is unchanged when the email address is unchanged', function () {
     $user = User::factory()->create();
 

@@ -67,6 +67,55 @@ test('non admins cannot access order management', function () {
     $this->actingAs($user)->get(route('admin.orders.index'))->assertForbidden();
 });
 
+test('admin can create an order and download its invoice pdf', function () {
+    $admin = User::factory()->create(['is_admin' => true]);
+    $customer = User::factory()->create([
+        'first_name' => 'علی',
+        'last_name' => 'رضایی',
+        'phone_number' => '09120000000',
+        'postal_code' => '1234567890',
+        'address' => 'مشهد، خیابان آزمون',
+    ]);
+    $category = Category::create(['name' => 'لوازم جانبی', 'slug' => 'admin-order-accessories']);
+    $product = Product::create([
+        'category_id' => $category->id,
+        'name' => 'شارژر تست',
+        'slug' => 'admin-order-charger',
+        'sku' => 'ADMIN-ORDER-1',
+        'price' => 400000,
+        'stock' => 5,
+        'is_active' => true,
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('admin.orders.store'), [
+            'user_id' => $customer->id,
+            'first_name' => $customer->first_name,
+            'last_name' => $customer->last_name,
+            'phone' => $customer->phone_number,
+            'postal_code' => $customer->postal_code,
+            'address' => $customer->address,
+            'shipping_method' => 'pickup',
+            'status' => 'processing',
+            'items' => [['product_id' => $product->id, 'quantity' => 2]],
+        ])
+        ->assertSessionHasNoErrors();
+
+    $order = Order::latest('id')->firstOrFail();
+    expect($order->user_id)->toBe($customer->id)
+        ->and($order->subtotal)->toEqual(800000)
+        ->and($order->total)->toEqual(800000)
+        ->and($order->paid_at)->not->toBeNull()
+        ->and($order->items)->toHaveCount(1)
+        ->and($product->fresh()->stock)->toBe(3);
+
+    $pdf = $this->get(route('orders.invoice.pdf', ['order' => $order, 'token' => $order->invoice_token]));
+    $pdf->assertOk()
+        ->assertHeader('content-type', 'application/pdf')
+        ->assertHeader('content-disposition', "attachment; filename=\"invoice-{$order->number}.pdf\"");
+    expect($pdf->getContent())->toStartWith('%PDF-');
+});
+
 test('admin can see registered users and non admins cannot access the list', function () {
     $admin = User::factory()->create(['is_admin' => true]);
     $customer = User::factory()->create([

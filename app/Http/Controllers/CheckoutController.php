@@ -217,7 +217,7 @@ class CheckoutController extends Controller
 
         return response($pdf->Output("invoice-{$order->number}.pdf", Destination::STRING_RETURN), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => "inline; filename=\"invoice-{$order->number}.pdf\"",
+            'Content-Disposition' => "attachment; filename=\"invoice-{$order->number}.pdf\"",
         ]);
     }
 
