@@ -1,4 +1,5 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { formatPersianDateTime } from '@/lib/dateTime';
 import axios from 'axios';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -2100,7 +2101,7 @@ function TicketsPage({ tickets, admin = false }: { tickets: PaginatedTickets | T
                 {items.length ? items.map((item) => <Link className="ticket-row" href={showRoute(item)} key={item.id}>
                     <span><b>{item.subject}</b><small dir="ltr">{item.number}</small></span>
                     {admin && <span><small>کاربر</small><b>{`${item.user?.first_name || ''} ${item.user?.last_name || ''}`.trim() || 'کاربر'}</b></span>}
-                    <span><small>آخرین به‌روزرسانی</small><b>{new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(item.updated_at))}</b></span>
+                    <span><small>آخرین به‌روزرسانی</small><b>{formatPersianDateTime(item.updated_at)}</b></span>
                     <span><small>پیام‌ها</small><b>{new Intl.NumberFormat('fa-IR').format(item.messages_count || 0)}</b></span>
                     <strong className={`ticket-status ticket-${item.status}`}>{ticketStatusLabels[item.status]}</strong><i>←</i>
                 </Link>) : <div className="empty-orders">تیکتی ثبت نشده است.</div>}
@@ -2133,7 +2134,7 @@ function TicketConversation({ ticket, admin = false }: { ticket: Ticket; admin?:
                 {ticket.messages?.map((message) => {
                     const fromAdmin = Boolean(message.user?.is_admin);
                     const sender = fromAdmin ? 'پشتیبانی ایرگجت' : `${message.user?.first_name || ''} ${message.user?.last_name || ''}`.trim() || 'کاربر';
-                    return <article className={fromAdmin ? 'ticket-message staff' : 'ticket-message customer'} key={message.id}><header><b>{sender}</b><time>{new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(message.created_at))}</time></header><p>{message.body}</p></article>;
+                    return <article className={fromAdmin ? 'ticket-message staff' : 'ticket-message customer'} key={message.id}><header><b>{sender}</b><time>{formatPersianDateTime(message.created_at)}</time></header><p>{message.body}</p></article>;
                 })}
             </section>
             {ticket.status === 'closed' ? <div className="ticket-closed-note">این تیکت بسته شده است و امکان ارسال پاسخ جدید وجود ندارد.</div> : <form className="ticket-reply" onSubmit={(event) => { event.preventDefault(); form.post(replyRoute, { preserveScroll: true, onSuccess: () => form.reset() }); }}>
@@ -2257,7 +2258,7 @@ function AdminOrders({ orders, products, users, shippingMethods }: { orders: Pag
                         </span>
                         <span>
                             <small>تاریخ ثبت</small>
-                            <b>{new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(order.created_at))}</b>
+                            <b>{formatPersianDateTime(order.created_at)}</b>
                         </span>
                         <span>
                             <small>تعداد کالا</small>
@@ -2307,7 +2308,7 @@ function AdminUsers({ users }: { users: PaginatedUsers | RegisteredUser[] }) {
                         <span><small>نام و نام خانوادگی</small><b>{`${user.first_name || ''} ${user.last_name || ''}`.trim() || 'بدون نام'}</b></span>
                         <span><small>شماره موبایل</small><b dir="ltr">{user.phone_number || '—'}</b></span>
                         <span><small>ایمیل</small><a dir="ltr" href={`mailto:${user.email}`}>{user.email}</a></span>
-                        <span><small>تاریخ ثبت‌نام</small><b>{new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(user.created_at))}</b></span>
+                        <span><small>تاریخ ثبت‌نام</small><b>{formatPersianDateTime(user.created_at)}</b></span>
                         <strong className={user.is_admin ? 'user-role admin' : 'user-role'}>{user.is_admin ? 'مدیر' : 'کاربر'}</strong>
                     </article>
                 )) : <div className="empty-orders">هنوز کاربری ثبت‌نام نکرده است.</div>}
@@ -2333,7 +2334,7 @@ function AdminOrderDetail({ order }: { order: Order }) {
                 <div>
                     <small>جزئیات کامل سفارش</small>
                     <h1 dir="ltr">{order.number}</h1>
-                    <p>ثبت‌شده در {new Intl.DateTimeFormat('fa-IR', { dateStyle: 'full', timeStyle: 'short' }).format(new Date(order.created_at))}</p>
+                    <p>ثبت‌شده در {formatPersianDateTime(order.created_at, 'full')}</p>
                 </div>
                 <Link className="secondary-link" href={route('admin.orders.index')}>بازگشت به سفارشات</Link>
             </div>
@@ -2365,7 +2366,7 @@ function AdminOrderDetail({ order }: { order: Order }) {
                         <div><dt>روش پرداخت</dt><dd>{paymentLabels[order.payment_method || ''] || order.payment_method || '—'}</dd></div>
                         <div><dt>روش ارسال</dt><dd>{shippingLabels[order.shipping_method] || order.shipping_method}</dd></div>
                         <div><dt>شناسه پرداخت</dt><dd dir="ltr">{order.payment_reference || '—'}</dd></div>
-                        <div><dt>زمان پرداخت</dt><dd>{order.paid_at ? new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(order.paid_at)) : 'پرداخت نشده'}</dd></div>
+                        <div><dt>زمان پرداخت</dt><dd>{order.paid_at ? formatPersianDateTime(order.paid_at) : 'پرداخت نشده'}</dd></div>
                         {order.payment_method === 'card_to_card' && <div><dt>مبلغ اعلامی</dt><dd>{toman(Number(order.card_to_card_amount || 0))}</dd></div>}
                         {order.payment_receipt && <div><dt>فیش واریز</dt><dd><a href={route('admin.orders.receipt', order.id)} target="_blank" rel="noreferrer">مشاهده فیش پرداخت</a></dd></div>}
                     </dl>

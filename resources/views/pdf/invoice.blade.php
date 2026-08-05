@@ -37,11 +37,19 @@
             'refunded' => 'مرجوع شده',
         ];
         $money = fn ($value) => number_format((int) $value).' تومان';
+        $persianDateTime = new IntlDateFormatter(
+            'fa_IR@calendar=persian',
+            IntlDateFormatter::NONE,
+            IntlDateFormatter::NONE,
+            'Asia/Tehran',
+            IntlDateFormatter::TRADITIONAL,
+            'yyyy/MM/dd HH:mm'
+        );
     @endphp
     <div class="header">
         <div class="brand">air<span>gadget</span></div>
         <h1>فاکتور فروش سفارش {{ $order->number }}</h1>
-        <div class="muted">تاریخ ثبت: {{ optional($order->created_at)->format('Y/m/d H:i') }}</div>
+        <div class="muted">تاریخ ثبت: {{ $order->created_at ? $persianDateTime->format($order->created_at) : '—' }}</div>
     </div>
 
     <h2>مشخصات خریدار (گیرنده)</h2>
