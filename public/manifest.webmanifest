@@ -1,0 +1,42 @@
+{
+    "id": "/",
+    "name": "ایرگجت | لوازم جانبی موبایل",
+    "short_name": "ایرگجت",
+    "description": "فروشگاه تخصصی لوازم جانبی موبایل، ایرپاد و گجت",
+    "lang": "fa",
+    "dir": "rtl",
+    "start_url": "/?source=pwa",
+    "scope": "/",
+    "display": "standalone",
+    "display_override": ["window-controls-overlay", "standalone"],
+    "orientation": "any",
+    "background_color": "#fbfbfc",
+    "theme_color": "#17212b",
+    "categories": ["shopping", "lifestyle"],
+    "icons": [
+        {
+            "src": "/pwa/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/pwa/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/pwa/icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "/pwa/icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

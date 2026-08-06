@@ -20,3 +20,11 @@ createInertiaApp({
         color: '#4B5563',
     },
 });
+
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch((error) => {
+            console.error('Service worker registration failed:', error);
+        });
+    });
+}

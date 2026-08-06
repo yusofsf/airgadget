@@ -95,6 +95,10 @@ type SeoMeta = {
     canonical?: string;
 };
 type StoredCart = { items: CardProduct[]; expiresAt: number | null };
+type InstallPromptEvent = Event & {
+    prompt: () => Promise<void>;
+    userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
 type AdminForm = {
     name: string;
     sku: string;
@@ -300,6 +304,7 @@ export default function Storefront({
     const [shopFilterForm, setShopFilterForm] = useState<ShopFilters>(shopFilters);
     const shopFilterTimer = useRef<number | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
     const productItems: Product[] = Array.isArray(products) ? products : products?.data || [];
     const list = productItems.map(toCard);
     const heroImage = '/images/airpods-pro.jpg';
@@ -342,6 +347,21 @@ export default function Storefront({
     useEffect(() => {
         setFav(favoriteProductIds.map(Number));
     }, [auth?.user?.id, JSON.stringify(favoriteProductIds)]);
+    useEffect(() => {
+        const captureInstallPrompt = (event: Event) => {
+            event.preventDefault();
+            setInstallPrompt(event as InstallPromptEvent);
+        };
+        const clearInstallPrompt = () => setInstallPrompt(null);
+
+        window.addEventListener('beforeinstallprompt', captureInstallPrompt);
+        window.addEventListener('appinstalled', clearInstallPrompt);
+
+        return () => {
+            window.removeEventListener('beforeinstallprompt', captureInstallPrompt);
+            window.removeEventListener('appinstalled', clearInstallPrompt);
+        };
+    }, []);
     const displayed = useMemo(
         () =>
             list
@@ -474,6 +494,11 @@ export default function Storefront({
                         <Link href="/contact-us">تماس با ما</Link>
                     </nav>
                     <div className="head-actions">
+                        {installPrompt && <button className="install-app" type="button" onClick={async () => {
+                            await installPrompt.prompt();
+                            await installPrompt.userChoice;
+                            setInstallPrompt(null);
+                        }}>نصب اپ</button>}
                         <Link className="account-entry" href={auth?.user ? '/account' : '/login'}>
                             {auth?.user ? 'حساب من' : 'ورود و ثبت‌نام'}
                         </Link>

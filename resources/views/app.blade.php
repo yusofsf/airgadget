@@ -3,8 +3,15 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link rel="icon" type="image/png" href="/airgadget-logo.png">
-        <link rel="apple-touch-icon" href="/airgadget-logo.png">
+        <meta name="theme-color" content="#17212b">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="ایرگجت">
+        <meta name="application-name" content="ایرگجت">
+        <link rel="manifest" href="/manifest.webmanifest">
+        <link rel="icon" type="image/png" sizes="192x192" href="/pwa/icon-192.png">
+        <link rel="apple-touch-icon" sizes="180x180" href="/pwa/apple-touch-icon.png">
 
         <title inertia>{{ config('app.name', 'Laravel') }}</title>
 
