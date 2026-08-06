@@ -62,6 +62,7 @@ type PaginatedUsers = { data: RegisteredUser[]; current_page: number; last_page:
 type TicketMessage = { id: number; body: string; created_at: string; user?: { id: number; first_name?: string; last_name?: string; is_admin?: boolean } | null };
 type Ticket = { id: number; number: string; subject: string; status: 'open' | 'answered' | 'closed'; created_at: string; updated_at: string; messages_count?: number; messages?: TicketMessage[]; user?: { id: number; first_name?: string; last_name?: string; phone_number?: string; email?: string } };
 type PaginatedTickets = { data: Ticket[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
+type PaginatedArticles = { data: Article[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
 type Accounting = { received: number; product_revenue: number; shipping_revenue: number; sold_items: number; paid_orders: number; pending_orders: number };
 type CardProduct = {
     id: number;
@@ -590,7 +591,7 @@ export default function Storefront({
                 )}
 
                 {view === 'articles' ? (
-                    <Articles articles={Array.isArray(articles) ? articles : articles?.data || []} articleCategories={articleCategories} tags={tags} selectedArticleCategory={selectedArticleCategory} />
+                    <Articles articles={articles} articleCategories={articleCategories} selectedArticleCategory={selectedArticleCategory} />
                 ) : view === 'tag' ? (
                     <TagLanding tag={selectedTag} products={productItems} articles={Array.isArray(articles) ? articles : []} add={addToCart} />
                 ) : view === 'article' ? (
@@ -951,17 +952,20 @@ function CategoryCards({ counts }: { counts: Category[] }) {
     );
 }
 
-function Articles({ articles, articleCategories, tags, selectedArticleCategory }: { articles: Article[]; articleCategories: ArticleCategory[]; tags: Tag[]; selectedArticleCategory?: ArticleCategory }) {
+function Articles({ articles, articleCategories, selectedArticleCategory }: { articles: PaginatedArticles | Article[]; articleCategories: ArticleCategory[]; selectedArticleCategory?: ArticleCategory }) {
+    const pagination = Array.isArray(articles) ? null : articles;
+    const items = Array.isArray(articles) ? articles : articles?.data || [];
+
     return (
         <main className="page">
             <em>راهنما و بررسی تخصصی</em>
             <h1>{selectedArticleCategory ? `مقالات ${selectedArticleCategory.name}` : 'مجله ایرگجت'}</h1>
             <div className="article-taxonomy">
+                <Link className={!selectedArticleCategory ? 'active' : ''} href={route('articles.index')}>همه موضوعات</Link>
                 {articleCategories.map((category) => <Link className={selectedArticleCategory?.id === category.id ? 'active' : ''} href={route('article-categories.show', category.slug)} key={category.id}>{category.name}</Link>)}
-                {tags.map((tag) => <Link href={route('tags.show', tag.slug)} key={tag.id}>#{tag.name}</Link>)}
             </div>
             <div className="article-grid">
-                {articles.length ? articles.map((article) => (
+                {items.length ? items.map((article) => (
                     <article className="article" key={article.id}>
                         {article.image ? <img src={article.image} alt={article.title} loading="lazy" /> : <div className="article-image" />}
                         <small>{article.category?.name || 'مجله ایرگجت'}</small>
@@ -977,6 +981,11 @@ function Articles({ articles, articleCategories, tags, selectedArticleCategory }
                     </div>
                 )}
             </div>
+            {pagination && pagination.last_page > 1 && <nav className="order-pagination article-pagination" aria-label="صفحه‌بندی مقالات">
+                {pagination.prev_page_url ? <Link href={pagination.prev_page_url}>صفحه قبل</Link> : <span>صفحه قبل</span>}
+                <b>صفحه {new Intl.NumberFormat('fa-IR').format(pagination.current_page)} از {new Intl.NumberFormat('fa-IR').format(pagination.last_page)}</b>
+                {pagination.next_page_url ? <Link href={pagination.next_page_url}>صفحه بعد</Link> : <span>صفحه بعد</span>}
+            </nav>}
         </main>
     );
 }
