@@ -112,7 +112,7 @@
         <tbody>
             @foreach($order->items as $item)
                 <tr>
-                    <td>{{ $item->name }}</td>
+                    <td>{{ $item->name }} @if($item->selected_color)<br><small>رنگ: {{ $item->selected_color }}</small>@endif</td>
                     <td>{{ $item->sku }}</td>
                     <td>{{ $item->quantity }}</td>
                     <td>{{ $money($item->price) }}</td>

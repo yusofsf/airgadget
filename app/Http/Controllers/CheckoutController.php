@@ -51,6 +51,7 @@ class CheckoutController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100'],
+            'items.*.selected_color' => ['nullable', 'string', 'max:100'],
         ]);
 
         $shipping = collect(StoreSetting::shippingMethods())->first(
@@ -61,7 +62,21 @@ class CheckoutController extends Controller
         }
 
         $order = DB::transaction(function () use ($request, $validated, $shipping) {
-            $requestedItems = collect($validated['items'])
+            $itemLines = collect($validated['items'])
+                ->map(function ($item) {
+                    $item['selected_color'] = trim((string) ($item['selected_color'] ?? '')) ?: null;
+
+                    return $item;
+                })
+                ->groupBy(fn ($item) => $item['product_id'].'|'.($item['selected_color'] ?? ''))
+                ->map(function ($items) {
+                    $line = $items->first();
+                    $line['quantity'] = $items->sum('quantity');
+
+                    return $line;
+                })
+                ->values();
+            $requestedItems = $itemLines
                 ->groupBy('product_id')
                 ->map(fn ($items) => $items->sum('quantity'));
             $products = Product::whereIn('id', $requestedItems->keys())
@@ -77,6 +92,17 @@ class CheckoutController extends Controller
                     throw ValidationException::withMessages(['items' => 'موجودی یکی از محصولات سبد کافی نیست.']);
                 }
                 $subtotal += (int) ($product->sale_price ?: $product->price) * $quantity;
+            }
+
+            foreach ($itemLines as $line) {
+                $product = $products->get($line['product_id']);
+                $availableColors = array_values(array_filter(array_map(
+                    'trim',
+                    preg_split('/[,،|\/]+/u', (string) data_get($product?->attributes, 'color', '')) ?: []
+                )));
+                if ($availableColors && ! in_array($line['selected_color'], $availableColors, true)) {
+                    throw ValidationException::withMessages(['items' => "رنگ انتخاب‌شده برای محصول {$product->name} معتبر نیست."]);
+                }
             }
 
             $shippingCost = (int) $shipping['cost'];
@@ -112,16 +138,19 @@ class CheckoutController extends Controller
                 ],
             ]);
 
-            foreach ($requestedItems as $productId => $quantity) {
-                $product = $products->get($productId);
+            foreach ($itemLines as $line) {
+                $product = $products->get($line['product_id']);
                 $order->items()->create([
                     'product_id' => $product->id,
                     'name' => $product->name,
                     'sku' => $product->sku,
                     'price' => $product->sale_price ?: $product->price,
-                    'quantity' => $quantity,
+                    'quantity' => $line['quantity'],
+                    'selected_color' => $line['selected_color'],
                 ]);
-                $product->decrement('stock', $quantity);
+            }
+            foreach ($requestedItems as $productId => $quantity) {
+                $products->get($productId)->decrement('stock', $quantity);
             }
 
             return $order;

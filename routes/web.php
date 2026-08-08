@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [StoreController::class, 'home'])->name('home');
 Route::get('/shop', [StoreController::class, 'shop'])->name('shop');
+Route::get('/cart', [StoreController::class, 'cart'])->name('cart');
 Route::get('/search/products', [StoreController::class, 'searchProducts'])->name('products.search');
 Route::get('/categories/{category:slug}', [StoreController::class, 'category'])->name('categories.show');
 Route::get('/products/{product:slug}', [StoreController::class, 'product'])->name('products.show');

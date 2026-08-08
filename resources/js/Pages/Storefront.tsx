@@ -54,7 +54,7 @@ type Article = {
     category?: ArticleCategory | null;
 };
 type ShippingMethod = { code: string; name: string; description: string; cost: number; is_active: boolean };
-type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; tax?: number; total: number; shipping_method: string; payment_method?: string; payment_receipt?: string; card_to_card_amount?: number; payment_reference?: string; paid_at?: string; created_at: string; updated_at?: string; items_count?: number; items_sum_quantity?: number; address?: { first_name?: string; last_name?: string; customer_name?: string; phone?: string; postal_code?: string; province?: string; city?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; price?: number; quantity: number }[]; user?: { first_name?: string; last_name?: string; phone_number?: string; email?: string } };
+type Order = { id: number; number: string; invoice_token?: string; status: string; subtotal?: number; discount?: number; shipping_cost?: number; tax?: number; total: number; shipping_method: string; payment_method?: string; payment_receipt?: string; card_to_card_amount?: number; payment_reference?: string; paid_at?: string; created_at: string; updated_at?: string; items_count?: number; items_sum_quantity?: number; address?: { first_name?: string; last_name?: string; customer_name?: string; phone?: string; postal_code?: string; province?: string; city?: string; full?: string }; items?: { id?: number; name?: string; sku?: string; selected_color?: string | null; price?: number; quantity: number }[]; user?: { first_name?: string; last_name?: string; phone_number?: string; email?: string } };
 type InvoiceSender = { first_name?: string | null; last_name?: string | null; phone_number?: string | null; postal_code?: string | null; address?: string | null };
 type PaginatedOrders = { data: Order[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
 type RegisteredUser = { id: number; first_name?: string | null; last_name?: string | null; phone_number?: string | null; postal_code?: string | null; address?: string | null; email?: string | null; is_admin: boolean; created_at: string };
@@ -72,7 +72,8 @@ type CardProduct = {
     price: number;
     sale?: number;
     brand: string;
-    color: string;
+    colors: string[];
+    selectedColor: string;
     image?: string;
     stock: number;
     tag?: string;
@@ -226,6 +227,9 @@ const uploadErrorMessage = (error: any) =>
     || error?.response?.data?.message
     || error?.message
     || 'آپلود تصویر انجام نشد. محدودیت حجم یا دسترسی نوشتن سرور را بررسی کنید.';
+const parseColors = (value?: string | null): string[] => Array.from(new Set(
+    (value || '').split(/[,،|/]+/).map((color) => color.trim()).filter(Boolean),
+));
 const toCard = (p: Product): CardProduct => ({
     id: p.id,
     name: p.name,
@@ -233,7 +237,8 @@ const toCard = (p: Product): CardProduct => ({
     price: Number(p.price || 0),
     sale: p.sale_price ? Number(p.sale_price) : undefined,
     brand: p.brand?.name || 'بدون برند',
-    color: p.attributes?.color || 'مشکی',
+    colors: parseColors(p.attributes?.color),
+    selectedColor: parseColors(p.attributes?.color)[0] || '',
     stock: Number(p.stock || 0),
     image: imageUrl(p.main_image || p.images?.[0]?.path || p.gallery?.[0]),
 });
@@ -241,9 +246,13 @@ const readStoredCart = (): StoredCart => {
     if (typeof window === 'undefined') return { items: [], expiresAt: null };
     try {
         const stored = JSON.parse(window.localStorage.getItem('airgadget-cart') || '[]');
-        if (Array.isArray(stored)) return { items: stored, expiresAt: null };
+        const normalizeItems = (items: any[]): CardProduct[] => items.map((item) => {
+            const colors = Array.isArray(item.colors) ? item.colors : parseColors(item.color);
+            return { ...item, colors, selectedColor: item.selectedColor || colors[0] || '' };
+        });
+        if (Array.isArray(stored)) return { items: normalizeItems(stored), expiresAt: null };
         if (stored?.expiresAt && stored.expiresAt <= Date.now()) return { items: [], expiresAt: null };
-        return { items: Array.isArray(stored?.items) ? stored.items : [], expiresAt: stored?.expiresAt || null };
+        return { items: Array.isArray(stored?.items) ? normalizeItems(stored.items) : [], expiresAt: stored?.expiresAt || null };
     } catch {
         return { items: [], expiresAt: null };
     }
@@ -399,6 +408,9 @@ export default function Storefront({
         setCartExpiresAt(null);
         setCart((items) => [...items, item]);
     };
+    const updateCartColor = (productId: number, selectedColor: string) => {
+        setCart((items) => items.map((item) => item.id === productId ? { ...item, selectedColor } : item));
+    };
     const clearCart = () => {
         setCart([]);
         setCartExpiresAt(null);
@@ -459,7 +471,9 @@ export default function Storefront({
                 ? 'مدیریت فروشگاه'
                 : view === 'account'
                   ? 'حساب کاربری'
-                  : view === 'checkout'
+                    : view === 'cart'
+                      ? 'سبد خرید'
+                    : view === 'checkout'
                     ? 'تکمیل سفارش'
                     : view === 'invoice'
                       ? 'فاکتور سفارش'
@@ -502,14 +516,14 @@ export default function Storefront({
                             {auth?.user ? 'حساب من' : 'ورود و ثبت‌نام'}
                         </Link>
                         {auth?.user && <button className="header-logout" type="button" onClick={() => router.post(route('logout'))}>خروج</button>}
-                        <button className="icon basket" aria-label="سبد خرید" onClick={() => setPanel('cart')}>
+                        <Link className="icon basket" aria-label="مشاهده سبد خرید" href="/cart">
                             <svg viewBox="0 0 24 24" aria-hidden="true">
                                 <path d="M3 4h2l2.1 9.1a2 2 0 0 0 2 1.55h7.85a2 2 0 0 0 1.94-1.52L20.3 7H6" />
                                 <circle cx="9.5" cy="19" r="1.25" />
                                 <circle cx="17" cy="19" r="1.25" />
                             </svg>
                             <i>{cart.length}</i>
-                        </button>
+                        </Link>
                         <button
                             className="icon menu-toggle"
                             aria-label="نمایش منو"
@@ -642,6 +656,8 @@ export default function Storefront({
                     <TicketsPage tickets={tickets} />
                 ) : view === 'ticket' ? (
                     <TicketConversation ticket={ticket} />
+                ) : view === 'cart' ? (
+                    <CartPage cart={cart} setCart={setCart} add={addToCart} updateColor={updateCartColor} shippingMethods={shippingMethods} />
                 ) : view === 'checkout' ? (
                     <Checkout cart={cart} shippingMethods={shippingMethods} clearCart={clearCart} holdCartForPayment={holdCartForPayment} releaseCartHold={releaseCartHold} auth={auth} cardToCard={cardToCard} />
                 ) : view === 'invoice' ? (
@@ -772,12 +788,16 @@ function ProductCard({ p, add, fav, toggle }: any) {
     return (
         <article className="card">
             <div className="photo">
-                {p.sale && <span className="badge">{p.tag || 'تخفیف ویژه'}</span>}
+                {(p.sale || !p.stock) && (
+                    <div className="product-badges">
+                        {!p.stock && <span className="out">ناموجود</span>}
+                        {p.sale && <span className="badge">{p.tag || 'تخفیف ویژه'}</span>}
+                    </div>
+                )}
                 <button className={`heart ${fav ? 'selected' : ''}`} type="button" aria-label={fav ? 'حذف از علاقه‌مندی‌ها' : 'افزودن به علاقه‌مندی‌ها'} aria-pressed={fav} onClick={toggle}>
                     {fav ? '♥' : '♡'}
                 </button>
                 {p.image ? <img src={p.image} alt={p.name} loading="lazy" /> : <div className="photo-placeholder">بدون عکس</div>}
-                {!p.stock && <span className="out">ناموجود</span>}
             </div>
             <div className="card-body">
                 <small>{p.brand}</small>
@@ -891,13 +911,15 @@ function ProductDetail({ product, add, favorite, toggleFavorite }: { product: Pr
         ...(product?.gallery || []),
     ].map(imageUrl).filter((path): path is string => Boolean(path))));
     const [selectedImage, setSelectedImage] = useState<string | undefined>(() => gallery[0]);
+    const colors = parseColors(product?.attributes?.color);
+    const [selectedColor, setSelectedColor] = useState(() => colors[0] || '');
+    useEffect(() => setSelectedColor(colors[0] || ''), [product?.id]);
 
     if (!product) {
         return <main className="page"><h1>محصول پیدا نشد</h1></main>;
     }
 
     const card = toCard(product);
-    const color = typeof product.attributes?.color === 'string' ? product.attributes.color : '';
     const specifications = product.specifications || [];
 
     return (
@@ -920,11 +942,20 @@ function ProductDetail({ product, add, favorite, toggleFavorite }: { product: Pr
                         {product.sale_price && <del>{toman(Number(product.price))}</del>}
                         <b>{toman(Number(product.sale_price || product.price || 0))}</b>
                     </div>
-                    {(color || specifications.length > 0) && (
+                    {colors.length > 0 && (
+                        <fieldset className="product-color-picker">
+                            <legend>انتخاب رنگ</legend>
+                            <div>
+                                {colors.map((color) => (
+                                    <button type="button" className={selectedColor === color ? 'selected' : ''} aria-pressed={selectedColor === color} onClick={() => setSelectedColor(color)} key={color}>{color}</button>
+                                ))}
+                            </div>
+                        </fieldset>
+                    )}
+                    {specifications.length > 0 && (
                         <section className="product-specifications">
                             <h2>ویژگی‌های محصول</h2>
                             <dl>
-                                {color && <div><dt>رنگ</dt><dd>{color}</dd></div>}
                                 {specifications.map((specification) => (
                                     <div key={specification.id || `${specification.key}-${specification.value}`}>
                                         <dt>{specification.key}</dt>
@@ -935,7 +966,7 @@ function ProductDetail({ product, add, favorite, toggleFavorite }: { product: Pr
                         </section>
                     )}
                     <div className="product-detail-actions">
-                        <button className={`primary ${!card.stock ? 'unavailable' : ''}`} onClick={() => add(card)}>
+                        <button className={`primary ${!card.stock ? 'unavailable' : ''}`} onClick={() => add({ ...card, selectedColor })}>
                             {card.stock ? 'افزودن به سبد خرید' : 'ناموجود'}
                         </button>
                         <button className={`favorite-button ${favorite ? 'selected' : ''}`} type="button" aria-pressed={favorite} onClick={() => toggleFavorite(product.id)}>
@@ -1218,15 +1249,73 @@ function Account({ orders, auth, favoriteProducts, favoriteIds, add, toggleFavor
     );
 }
 
-function Checkout({ cart, shippingMethods, clearCart, auth, cardToCard }: { cart: CardProduct[]; shippingMethods: ShippingMethod[]; clearCart: () => void; holdCartForPayment: () => void; releaseCartHold: () => void; auth: any; cardToCard?: { number: string; holder: string } }) {
-    const quantities = Object.values(cart.reduce<Record<number, { product_id: number; quantity: number }>>((items, product) => {
-        items[product.id] = items[product.id] || { product_id: product.id, quantity: 0 };
+function CartPage({ cart, setCart, add, updateColor, shippingMethods }: { cart: CardProduct[]; setCart: any; add: (product: CardProduct) => void; updateColor: (productId: number, color: string) => void; shippingMethods: ShippingMethod[] }) {
+    const grouped = Object.values(cart.reduce<Record<number, { product: CardProduct; quantity: number }>>((items, product) => {
+        items[product.id] = items[product.id] || { product, quantity: 0 };
         items[product.id].quantity++;
         return items;
     }, {}));
-    const groupedCart = Object.values(cart.reduce<Record<number, { product: CardProduct; quantity: number }>>((items, product) => {
-        items[product.id] = items[product.id] || { product, quantity: 0 };
-        items[product.id].quantity++;
+    const shipping = shippingMethods.find((method) => method.is_active);
+    const subtotal = cart.reduce((sum, product) => sum + (product.sale || product.price), 0);
+    const removeOne = (productId: number) => setCart((items: CardProduct[]) => {
+        const index = items.findIndex((item) => item.id === productId);
+        return index < 0 ? items : items.filter((_, itemIndex) => itemIndex !== index);
+    });
+    const removeProduct = (productId: number) => setCart((items: CardProduct[]) => items.filter((item) => item.id !== productId));
+
+    return (
+        <main className="page cart-page">
+            <div className="cart-page-title"><div><small>مرور و ویرایش سفارش</small><h1>سبد خرید شما</h1></div><span>{cart.length} کالا</span></div>
+            {cart.length ? (
+                <div className="cart-page-grid">
+                    <section className="cart-page-items">
+                        {grouped.map(({ product, quantity }) => (
+                            <article className="cart-page-item" key={product.id}>
+                                <Link href={product.slug ? `/products/${product.slug}` : '/shop'} className="cart-page-image">
+                                    {product.image ? <img src={product.image} alt={product.name} /> : <span className="mini-placeholder" />}
+                                </Link>
+                                <div className="cart-page-info">
+                                    <small>{product.brand}</small>
+                                    <h2>{product.name}</h2>
+                                    {product.colors.length > 0 && <label className="cart-color-select">رنگ انتخابی<select value={product.selectedColor} onChange={(event) => updateColor(product.id, event.target.value)}>{product.colors.map((color) => <option value={color} key={color}>{color}</option>)}</select></label>}
+                                    <b>{toman(product.sale || product.price)}</b>
+                                </div>
+                                <div className="cart-page-actions">
+                                    <button className="remove-product" type="button" onClick={() => removeProduct(product.id)}>حذف</button>
+                                    <div className="cart-quantity">
+                                        <button type="button" aria-label={`کم کردن ${product.name}`} onClick={() => removeOne(product.id)}>−</button>
+                                        <b>{quantity}</b>
+                                        <button type="button" className={quantity >= product.stock ? 'unavailable' : ''} aria-label={`اضافه کردن ${product.name}`} onClick={() => add(product)}>+</button>
+                                    </div>
+                                </div>
+                            </article>
+                        ))}
+                    </section>
+                    <aside className="cart-summary">
+                        <h2>خلاصه سفارش</h2>
+                        <p><span>جمع محصولات</span><b>{toman(subtotal)}</b></p>
+                        <p><span>هزینه ارسال</span><b>{shipping ? (Number(shipping.cost) ? toman(Number(shipping.cost)) : 'رایگان') : 'در مرحله پرداخت'}</b></p>
+                        <div><span>مبلغ قابل پرداخت</span><strong>{toman(subtotal + Number(shipping?.cost || 0))}</strong></div>
+                        <Link className="primary full" href="/checkout">ادامه و تکمیل سفارش</Link>
+                        <Link className="continue-shopping" href="/shop">ادامه خرید</Link>
+                    </aside>
+                </div>
+            ) : <div className="empty-cart-page"><span>سبد خرید خالی است</span><p>محصولات موردنظرتان را به سبد خرید اضافه کنید.</p><Link className="primary" href="/shop">مشاهده محصولات</Link></div>}
+        </main>
+    );
+}
+
+function Checkout({ cart, shippingMethods, clearCart, auth, cardToCard }: { cart: CardProduct[]; shippingMethods: ShippingMethod[]; clearCart: () => void; holdCartForPayment: () => void; releaseCartHold: () => void; auth: any; cardToCard?: { number: string; holder: string } }) {
+    const quantities = Object.values(cart.reduce<Record<string, { product_id: number; quantity: number; selected_color: string }>>((items, product) => {
+        const key = `${product.id}:${product.selectedColor}`;
+        items[key] = items[key] || { product_id: product.id, quantity: 0, selected_color: product.selectedColor };
+        items[key].quantity++;
+        return items;
+    }, {}));
+    const groupedCart = Object.values(cart.reduce<Record<string, { product: CardProduct; quantity: number }>>((items, product) => {
+        const key = `${product.id}:${product.selectedColor}`;
+        items[key] = items[key] || { product, quantity: 0 };
+        items[key].quantity++;
         return items;
     }, {}));
     const form = useForm({
@@ -1286,7 +1375,7 @@ function Checkout({ cart, shippingMethods, clearCart, auth, cardToCard }: { cart
                 <aside>
                     <h3>خلاصه سفارش</h3>
                     <div className="checkout-items">
-                        {groupedCart.map(({ product, quantity }) => <div key={product.id}>{product.image ? <img src={product.image} alt={product.name} /> : <span className="mini-placeholder" />}<span><b>{product.name}</b><small>{quantity} × {toman(product.sale || product.price)}</small></span><strong>{toman((product.sale || product.price) * quantity)}</strong></div>)}
+                        {groupedCart.map(({ product, quantity }) => <div key={`${product.id}:${product.selectedColor}`}>{product.image ? <img src={product.image} alt={product.name} /> : <span className="mini-placeholder" />}<span><b>{product.name}</b>{product.selectedColor && <small>رنگ: {product.selectedColor}</small>}<small>{quantity} × {toman(product.sale || product.price)}</small></span><strong>{toman((product.sale || product.price) * quantity)}</strong></div>)}
                     </div>
                     <p>هزینه ارسال: {shipping ? (Number(shipping.cost) ? toman(Number(shipping.cost)) : 'رایگان') : '—'}</p>
                     <div className="checkout-grand"><span>جمع کل</span><b>{toman(subtotal + Number(shipping?.cost || 0))}</b></div>
@@ -1326,7 +1415,7 @@ function Invoice({ order, shipping, sender, clearCart }: { order: Order; shippin
                 </div>}
                 <div className="invoice-table">
                     <div className="invoice-row invoice-head"><span>شرح کالا</span><span>تعداد</span><span>قیمت واحد</span><span>جمع</span></div>
-                    {order.items?.map((item) => <div className="invoice-row" key={item.id || item.sku}><span>{item.name}<small>{item.sku}</small></span><span>{item.quantity}</span><span>{toman(Number(item.price || 0))}</span><span>{toman(Number(item.price || 0) * item.quantity)}</span></div>)}
+                    {order.items?.map((item) => <div className="invoice-row" key={item.id || item.sku}><span>{item.name}<small>{item.sku}{item.selected_color ? ` · رنگ: ${item.selected_color}` : ''}</small></span><span>{item.quantity}</span><span>{toman(Number(item.price || 0))}</span><span>{toman(Number(item.price || 0) * item.quantity)}</span></div>)}
                 </div>
                 <div className="invoice-totals">
                     <p><span>جمع کالاها</span><b>{toman(Number(order.subtotal || 0))}</b></p>
@@ -1372,7 +1461,7 @@ function OrderTracking({ order, error }: { order?: Order; error?: string }) {
                 <div className="order-progress">
                     {steps.map((step, index) => <div className={activeStep >= index ? 'done' : ''} key={step}><i>{activeStep >= index ? '✓' : index + 1}</i><span>{labels[step]}</span></div>)}
                 </div>
-                <div className="tracking-products">{order.items?.map((item) => <p key={item.id || item.sku}><span>{item.name} × {item.quantity}</span><b>{toman(Number(item.price || 0) * item.quantity)}</b></p>)}</div>
+                <div className="tracking-products">{order.items?.map((item) => <p key={item.id || item.sku}><span>{item.name}{item.selected_color ? ` (${item.selected_color})` : ''} × {item.quantity}</span><b>{toman(Number(item.price || 0) * item.quantity)}</b></p>)}</div>
                 <div className="tracking-total"><span>جمع سفارش</span><b>{toman(Number(order.total))}</b></div>
             </section>}
         </main>
@@ -1579,7 +1668,7 @@ function Admin({
                         />
                         <input value={data.meta_keywords} onChange={(event) => setData('meta_keywords', event.target.value)} placeholder="کلمات کلیدی محصول، جداشده با ویرگول" />
                         <input value={data.tags} onChange={(event) => setData('tags', event.target.value)} placeholder="تگ‌های محصول با ویرگول، مثل انکر، هندزفری" />
-                        <input value={data.color} onChange={(event) => setData('color', event.target.value)} placeholder="رنگ محصول، مثل مشکی یا سفید" />
+                        <input value={data.color} onChange={(event) => setData('color', event.target.value)} placeholder="رنگ‌ها با ویرگول، مثل مشکی، سفید، آبی" />
                         <SpecificationEditor specifications={data.specifications} onChange={(specifications) => setData('specifications', specifications)} />
                         <label className="upload-box">
                             <span>انتخاب تصاویر محصول</span>
@@ -1924,7 +2013,7 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
                 <section className="product-editor-card">
                     <h2>رنگ و ویژگی‌های محصول</h2>
                     <div className="product-editor-fields product-color-field">
-                        <label><span>رنگ محصول</span><input value={form.data.color} onChange={(event) => form.setData('color', event.target.value)} placeholder="مثلاً مشکی، سفید یا آبی" /></label>
+                        <label><span>رنگ‌های محصول</span><input value={form.data.color} onChange={(event) => form.setData('color', event.target.value)} placeholder="با ویرگول جدا کنید؛ مثلاً مشکی، سفید، آبی" /></label>
                     </div>
                     <SpecificationEditor specifications={form.data.specifications} onChange={(specifications) => form.setData('specifications', specifications)} />
                 </section>
@@ -2419,7 +2508,7 @@ function AdminOrderDetail({ order }: { order: Order }) {
                 <div className="order-items-head"><span>محصول</span><span>تعداد</span><span>قیمت واحد</span><span>قیمت کل</span></div>
                 {order.items?.map((item) => (
                     <div className="order-item-row" key={item.id || item.sku}>
-                        <span><b>{item.name}</b><small dir="ltr">{item.sku}</small></span>
+                        <span><b>{item.name}</b><small dir="ltr">{item.sku}</small>{item.selected_color && <small>رنگ: {item.selected_color}</small>}</span>
                         <span>{new Intl.NumberFormat('fa-IR').format(item.quantity)}</span>
                         <span>{toman(Number(item.price || 0))}</span>
                         <strong>{toman(Number(item.price || 0) * item.quantity)}</strong>

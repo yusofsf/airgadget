@@ -67,6 +67,14 @@ class StoreController extends Controller
         return $this->shopResponse($request);
     }
 
+    public function cart()
+    {
+        return Inertia::render('Storefront', [
+            'view' => 'cart',
+            'shippingMethods' => collect(StoreSetting::shippingMethods())->where('is_active', true)->values(),
+        ]);
+    }
+
     public function category(Request $request, Category $category)
     {
         return $this->shopResponse($request, $category);
