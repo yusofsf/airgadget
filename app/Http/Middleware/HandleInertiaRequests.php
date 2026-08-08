@@ -33,6 +33,10 @@ class HandleInertiaRequests extends Middleware
     {
         return [
             ...parent::share($request),
+            'seo' => [
+                'canonical' => $request->attributes->get('seo.canonical'),
+                'robots' => $request->attributes->get('seo.robots', 'noindex,follow'),
+            ],
             'auth' => [
                 'user' => $request->user(),
             ],

@@ -92,7 +92,6 @@ type SeoMeta = {
     description: string;
     keywords?: string;
     image?: string;
-    canonical?: string;
 };
 type StoredCart = { items: CardProduct[]; expiresAt: number | null };
 type InstallPromptEvent = Event & {
@@ -289,6 +288,7 @@ export default function Storefront({
     completeProfile = false,
     tickets = [],
     ticket,
+    seo,
 }: any) {
     const [search, setSearch] = useState('');
     const [searchResults, setSearchResults] = useState<ProductSearchResult[]>([]);
@@ -475,7 +475,7 @@ export default function Storefront({
                 <meta property="og:description" content={pageSeo.description} />
                 <meta property="og:type" content={view === 'article' ? 'article' : view === 'product' ? 'product' : 'website'} />
                 {pageSeo.image && <meta property="og:image" content={pageSeo.image} />}
-                {pageSeo.canonical && <link rel="canonical" href={pageSeo.canonical} />}
+                {seo?.canonical && <meta property="og:url" content={seo.canonical} />}
             </Head>
             <div className="site" dir="rtl">
                 {cartNotice && <div className="cart-notice" role="alert">{cartNotice}</div>}
@@ -788,7 +788,6 @@ function resolveSeo(view: string, product?: Product, article?: Article, selected
             description: product.meta_description || product.short_description || `خرید ${product.name} از ایرگجت با پشتیبانی ${supportPhone}`,
             keywords: product.meta_keywords || product.tags?.map((tag) => tag.name).join(', ') || undefined,
             image: imageUrl(product.main_image || product.images?.[0]?.path || product.gallery?.[0]),
-            canonical: product.canonical_url || undefined,
         };
     }
 
@@ -798,7 +797,6 @@ function resolveSeo(view: string, product?: Product, article?: Article, selected
             description: article.meta_description || article.excerpt || siteDescription,
             keywords: article.meta_keywords || article.tags?.map((tag) => tag.name).join(', ') || undefined,
             image: article.image || undefined,
-            canonical: article.canonical_url || undefined,
         };
     }
 
@@ -806,7 +804,6 @@ function resolveSeo(view: string, product?: Product, article?: Article, selected
         return {
             title: `${selectedCategory.name} | فروشگاه ایرگجت`,
             description: `خرید محصولات دسته ${selectedCategory.name} از فروشگاه ایرگجت`,
-            canonical: route('categories.show', selectedCategory.slug),
         };
     }
 
@@ -814,7 +811,6 @@ function resolveSeo(view: string, product?: Product, article?: Article, selected
         return {
             title: `${selectedTag.name} | محصولات و مقالات ایرگجت`,
             description: `محصولات، راهنماها و مطالب مرتبط با ${selectedTag.name} در ایرگجت`,
-            canonical: route('tags.show', selectedTag.slug),
         };
     }
 
@@ -822,7 +818,6 @@ function resolveSeo(view: string, product?: Product, article?: Article, selected
         return {
             title: `${selectedArticleCategory.name} | مجله ایرگجت`,
             description: selectedArticleCategory.description || `مقالات دسته‌بندی ${selectedArticleCategory.name} در مجله ایرگجت`,
-            canonical: route('article-categories.show', selectedArticleCategory.slug),
         };
     }
 
@@ -845,7 +840,6 @@ function resolveSeo(view: string, product?: Product, article?: Article, selected
         description: siteDescription,
         image: undefined,
         keywords: 'لوازم جانبی موبایل, ایرپاد, شارژر, قاب گوشی, گجت',
-        canonical: undefined,
     };
 }
 

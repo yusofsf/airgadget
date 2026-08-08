@@ -15,6 +15,7 @@ use App\Http\Controllers\OrderTrackingController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\TicketController;
+use App\Models\Tag;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [StoreController::class, 'home'])->name('home');
@@ -25,7 +26,7 @@ Route::get('/products/{product:slug}', [StoreController::class, 'product'])->nam
 Route::get('/product-images/{filename}', [ProductController::class, 'image'])->where('filename', '[A-Za-z0-9._-]+')->name('product-images.show');
 Route::get('/articles', [StoreController::class, 'articles'])->name('articles.index');
 Route::get('/tags/{tag:slug}', [StoreController::class, 'tag'])->name('tags.show');
-Route::get('/articles/tags/{tag:slug}', [StoreController::class, 'tag']);
+Route::get('/articles/tags/{tag:slug}', fn (Tag $tag) => redirect()->route('tags.show', $tag, 301));
 Route::get('/articles/categories/{articleCategory:slug}', [StoreController::class, 'articleCategory'])->name('article-categories.show');
 Route::get('/articles/{article:slug}', [StoreController::class, 'article'])->name('articles.show');
 Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');

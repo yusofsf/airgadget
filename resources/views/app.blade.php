@@ -9,6 +9,10 @@
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
         <meta name="apple-mobile-web-app-title" content="ایرگجت">
         <meta name="application-name" content="ایرگجت">
+        <meta name="robots" content="{{ $page['props']['seo']['robots'] ?? 'noindex,follow' }}">
+        @if(!empty($page['props']['seo']['canonical']))
+        <link rel="canonical" href="{{ $page['props']['seo']['canonical'] }}">
+        @endif
         <link rel="manifest" href="/manifest.webmanifest">
         <link rel="icon" type="image/png" sizes="192x192" href="/pwa/icon-192.png">
         <link rel="apple-touch-icon" sizes="180x180" href="/pwa/apple-touch-icon.png">
