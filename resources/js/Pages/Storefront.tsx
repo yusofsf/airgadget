@@ -9,7 +9,7 @@ type UploadedImage = { id?: number; path: string; sort_order?: number };
 type ProductSpecification = { id?: number; key: string; value: string };
 type Tag = { id: number; name: string; slug: string; products_count?: number; articles_count?: number };
 type ArticleCategory = { id: number; name: string; slug: string; description?: string | null; articles_count?: number };
-type ShopFilters = { brand_id: string; category_id: string; min_price: string; max_price: string };
+type ShopFilters = { brand_id: string; category_id: string; min_price: string; max_price: string; status: '' | 'sale' | 'stock' };
 type Product = {
     id: number;
     name: string;
@@ -63,6 +63,7 @@ type TicketMessage = { id: number; body: string; created_at: string; user?: { id
 type Ticket = { id: number; number: string; subject: string; status: 'open' | 'answered' | 'closed'; created_at: string; updated_at: string; messages_count?: number; messages?: TicketMessage[]; user?: { id: number; first_name?: string; last_name?: string; phone_number?: string; email?: string } };
 type PaginatedTickets = { data: Ticket[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
 type PaginatedArticles = { data: Article[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
+type PaginatedProducts = { data: Product[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
 type Accounting = { received: number; product_revenue: number; shipping_revenue: number; sold_items: number; paid_orders: number; pending_orders: number };
 type CardProduct = {
     id: number;
@@ -280,7 +281,8 @@ export default function Storefront({
     selectedCategory,
     selectedTag,
     selectedArticleCategory,
-    shopFilters = { brand_id: '', category_id: '', min_price: '', max_price: '' },
+    shopFilters = { brand_id: '', category_id: '', min_price: '', max_price: '', status: '' },
+    filteredProductCount,
     brandOptions = [],
     categoryOptions = [],
     favoriteProductIds = [],
@@ -300,7 +302,6 @@ export default function Storefront({
     const [fav, setFav] = useState<number[]>(() => favoriteProductIds.map(Number));
     const [panel, setPanel] = useState<'cart' | 'account' | null>(null);
     const [cartNotice, setCartNotice] = useState<string | null>(null);
-    const [filter, setFilter] = useState('');
     const [shopFilterForm, setShopFilterForm] = useState<ShopFilters>(shopFilters);
     const shopFilterTimer = useRef<number | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
@@ -340,7 +341,7 @@ export default function Storefront({
     }, [search]);
     useEffect(() => {
         if (view === 'shop') setShopFilterForm(shopFilters);
-    }, [view, shopFilters?.brand_id, shopFilters?.category_id, shopFilters?.min_price, shopFilters?.max_price]);
+    }, [view, shopFilters?.brand_id, shopFilters?.category_id, shopFilters?.min_price, shopFilters?.max_price, shopFilters?.status]);
     useEffect(() => () => {
         if (shopFilterTimer.current !== null) window.clearTimeout(shopFilterTimer.current);
     }, []);
@@ -364,10 +365,8 @@ export default function Storefront({
     }, []);
     const displayed = useMemo(
         () =>
-            list
-                .filter((p) => p.name.includes(search) || p.brand.toLowerCase().includes(search.toLowerCase()))
-                .filter((p) => !filter || (filter === 'sale' ? !!p.sale : filter === 'stock' ? p.stock : p.brand === filter)),
-        [list, search, filter],
+            list.filter((p) => p.name.includes(search) || p.brand.toLowerCase().includes(search.toLowerCase())),
+        [list, search],
     );
     useEffect(() => {
         window.localStorage.setItem('airgadget-cart', JSON.stringify({ items: cart, expiresAt: cartExpiresAt }));
@@ -448,7 +447,7 @@ export default function Storefront({
     const clearShopFilters = () => {
         if (shopFilterTimer.current !== null) window.clearTimeout(shopFilterTimer.current);
         shopFilterTimer.current = null;
-        setShopFilterForm({ brand_id: '', category_id: '', min_price: '', max_price: '' });
+        setShopFilterForm({ brand_id: '', category_id: '', min_price: '', max_price: '', status: '' });
         router.get(route('shop'), {}, { preserveState: true, preserveScroll: true, replace: true });
     };
     const section =
@@ -667,7 +666,7 @@ export default function Storefront({
                                         ['sale', 'تخفیف‌دار'],
                                         ['stock', 'موجود'],
                                     ].map(([value, label]) => (
-                                        <button className={filter === value ? 'active' : ''} onClick={() => setFilter(value)} key={value}>
+                                        <button type="button" className={shopFilterForm.status === value ? 'active' : ''} onClick={() => updateShopFilter('status', value as ShopFilters['status'])} key={value}>
                                             {label}
                                         </button>
                                     ))}
@@ -680,7 +679,10 @@ export default function Storefront({
                             <label><span>دسته‌بندی</span><select value={shopFilterForm.category_id} onChange={(event) => updateShopFilter('category_id', event.target.value)}><option value="">همه دسته‌ها</option>{categoryOptions.map((category: Category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
                             <label><span>حداقل قیمت</span><input value={shopFilterForm.min_price} onChange={(event) => updateShopFilter('min_price', event.target.value, 500)} inputMode="numeric" placeholder="تومان" /></label>
                             <label><span>حداکثر قیمت</span><input value={shopFilterForm.max_price} onChange={(event) => updateShopFilter('max_price', event.target.value, 500)} inputMode="numeric" placeholder="تومان" /></label>
-                            {(shopFilterForm.brand_id || shopFilterForm.category_id || shopFilterForm.min_price || shopFilterForm.max_price) && <button className="secondary" type="button" onClick={clearShopFilters}>حذف فیلترها</button>}
+                            {(shopFilterForm.brand_id || shopFilterForm.category_id || shopFilterForm.min_price || shopFilterForm.max_price || shopFilterForm.status) && <button className="secondary" type="button" onClick={clearShopFilters}>حذف فیلترها</button>}
+                        </div>}
+                        {view === 'shop' && <div className="shop-results-count" aria-live="polite">
+                            {new Intl.NumberFormat('fa-IR').format(Number(filteredProductCount ?? (products as PaginatedProducts)?.total ?? productItems.length))} محصول پیدا شد
                         </div>}
                         {displayed.length ? (
                             <div className="product-grid">
@@ -699,6 +701,17 @@ export default function Storefront({
                                 <b>هنوز محصولی برای نمایش ثبت نشده است</b>
                                 <span>از پنل مدیریت محصول اضافه کنید تا همین‌جا نمایش داده شود.</span>
                             </div>
+                        )}
+                        {view === 'shop' && !Array.isArray(products) && (products as PaginatedProducts)?.last_page > 1 && (
+                            <nav className="order-pagination shop-pagination" aria-label="صفحه‌بندی محصولات فروشگاه">
+                                {(products as PaginatedProducts).prev_page_url
+                                    ? <Link href={(products as PaginatedProducts).prev_page_url as string} preserveScroll>صفحه قبل</Link>
+                                    : <span>صفحه قبل</span>}
+                                <b>صفحه {new Intl.NumberFormat('fa-IR').format((products as PaginatedProducts).current_page)} از {new Intl.NumberFormat('fa-IR').format((products as PaginatedProducts).last_page)}</b>
+                                {(products as PaginatedProducts).next_page_url
+                                    ? <Link href={(products as PaginatedProducts).next_page_url as string} preserveScroll>صفحه بعد</Link>
+                                    : <span>صفحه بعد</span>}
+                            </nav>
                         )}
                     </section>
                 )}

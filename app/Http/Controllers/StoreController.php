@@ -76,11 +76,16 @@ class StoreController extends Controller
     {
         $brandId = $request->integer('brand_id') ?: null;
         $categoryId = $request->integer('category_id') ?: $selectedCategory?->id;
+        $status = in_array($request->string('status')->toString(), ['sale', 'stock'], true)
+            ? $request->string('status')->toString()
+            : '';
         $minPrice = $request->filled('min_price') && is_numeric($request->input('min_price')) ? (float) $request->input('min_price') : null;
         $maxPrice = $request->filled('max_price') && is_numeric($request->input('max_price')) ? (float) $request->input('max_price') : null;
         $productsQuery = Product::with(['brand', 'images', 'tags'])->where('is_active', true)
             ->when($brandId, fn ($query) => $query->where('brand_id', $brandId))
             ->when($categoryId, fn ($query) => $query->where('category_id', $categoryId))
+            ->when($status === 'sale', fn ($query) => $query->whereNotNull('sale_price'))
+            ->when($status === 'stock', fn ($query) => $query->where('stock', '>', 0))
             ->when($minPrice !== null || $maxPrice !== null, function ($query) use ($minPrice, $maxPrice) {
                 $query->where(function ($priceQuery) use ($minPrice, $maxPrice) {
                     $priceQuery->where(function ($saleQuery) use ($minPrice, $maxPrice) {
@@ -95,15 +100,19 @@ class StoreController extends Controller
                 });
             });
 
+        $products = $productsQuery->latest()->paginate(12)->withQueryString();
+
         return Inertia::render('Storefront', [
             'view' => 'shop',
-            'products' => $productsQuery->latest()->paginate(12)->withQueryString(),
+            'products' => $products,
+            'filteredProductCount' => $products->total(),
             'selectedCategory' => $selectedCategory?->only(['id', 'name', 'slug']),
             'shopFilters' => [
                 'brand_id' => $brandId ? (string) $brandId : '',
                 'category_id' => $categoryId ? (string) $categoryId : '',
                 'min_price' => $minPrice !== null ? (string) $minPrice : '',
                 'max_price' => $maxPrice !== null ? (string) $maxPrice : '',
+                'status' => $status,
             ],
             'brandOptions' => Brand::whereHas('products', fn ($query) => $query->where('is_active', true))->orderBy('name')->get(['id', 'name']),
             'categoryOptions' => Category::whereHas('products', fn ($query) => $query->where('is_active', true))->orderBy('name')->get(['id', 'name', 'slug']),
