@@ -27,6 +27,10 @@ php artisan inertia:start-ssr
 Restart that process after every frontend deployment. Its internal endpoint is
 configured with `INERTIA_SSR_URL` and should not be exposed publicly. Set
 `INERTIA_SSR_ENABLED=false` only on hosts where SSR is intentionally disabled.
+The SSR entry also honors cPanel/Passenger's automatically assigned `PORT`.
+For a cPanel Node.js application, use the project root as the application root
+and select the repository's `app.cjs` Passenger-compatible wrapper as the
+startup file.
 
 Product images uploaded from the admin panel are stored under
 `storage/app/product-images` and served through the public

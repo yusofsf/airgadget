@@ -6,6 +6,7 @@ import { route as ziggyRoute } from 'ziggy-js';
 import { formatPageTitle } from './lib/seo';
 
 const appName = process.env.VITE_APP_NAME || 'ایرگجت';
+const ssrPort = Number(process.env.PORT || 13714);
 
 createServer((page) => {
     const ziggy = {
@@ -27,4 +28,4 @@ createServer((page) => {
         ),
         setup: ({ App, props }) => <App {...props} />,
     });
-});
+}, ssrPort);
