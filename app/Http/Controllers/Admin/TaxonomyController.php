@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ArticleCategory;
+use App\Models\Category;
 use App\Models\Tag;
 use App\Support\PersianSlug;
 use Illuminate\Http\RedirectResponse;
@@ -12,6 +13,21 @@ use Illuminate\Validation\Rule;
 
 class TaxonomyController extends Controller
 {
+    public function updateCategory(Request $request, Category $category): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:150', Rule::unique('categories', 'name')->ignore($category->id)],
+            'description' => ['nullable', 'string', 'max:5000'],
+            'meta_title' => ['nullable', 'string', 'max:255'],
+            'meta_description' => ['nullable', 'string', 'max:500'],
+            'meta_keywords' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $category->update($validated);
+
+        return back()->with('status', "محتوا و تنظیمات سئوی دسته‌بندی «{$category->name}» ذخیره شد.");
+    }
+
     public function updateTag(Request $request, Tag $tag): RedirectResponse
     {
         $validated = $request->validate([
@@ -39,6 +55,8 @@ class TaxonomyController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:150', Rule::unique('article_categories', 'name')->ignore($articleCategory->id)],
             'description' => ['nullable', 'string', 'max:1000'],
+            'meta_title' => ['nullable', 'string', 'max:255'],
+            'meta_description' => ['nullable', 'string', 'max:500'],
         ]);
 
         $articleCategory->update([

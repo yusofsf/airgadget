@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Article;
+use App\Models\Category;
 use App\Models\Product;
 use Closure;
 use Illuminate\Http\Request;
@@ -16,7 +17,7 @@ class SetSeoHeaders
         'contact', 'terms',
     ];
 
-    private const FILTER_PARAMETERS = ['brand_id', 'category_id', 'min_price', 'max_price'];
+    private const FILTER_PARAMETERS = ['brand_id', 'category_id', 'min_price', 'max_price', 'status'];
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -44,6 +45,8 @@ class SetSeoHeaders
                 ? $request->route('product')->canonical_url : null,
             'articles.show' => $request->route('article') instanceof Article
                 ? $request->route('article')->canonical_url : null,
+            'categories.show' => $request->route('category') instanceof Category
+                ? $request->route('category')->canonical_url : null,
             default => null,
         };
 
@@ -55,7 +58,7 @@ class SetSeoHeaders
         $canonical = config('seo.canonical_url').'/'.ltrim($path, '/');
         $page = $request->integer('page');
 
-        if ($page > 1 && in_array($routeName, ['shop', 'articles.index', 'article-categories.show'], true)) {
+        if ($page > 1 && in_array($routeName, ['shop', 'categories.show', 'articles.index', 'article-categories.show'], true)) {
             $canonical .= '?page='.$page;
         }
 

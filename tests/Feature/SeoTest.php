@@ -29,6 +29,32 @@ test('pagination is self canonical while shop filters are not indexable', functi
         ->assertHeader('X-Robots-Tag', 'noindex,follow')
         ->assertSee('<link rel="canonical" href="https://airgadget.ir/shop">', false)
         ->assertSee('<meta name="robots" content="noindex,follow">', false);
+
+    $this->get('/shop?status=sale')
+        ->assertOk()
+        ->assertHeader('X-Robots-Tag', 'noindex,follow')
+        ->assertSee('<link rel="canonical" href="https://airgadget.ir/shop">', false);
+});
+
+test('product category pagination is self canonical and exposes category seo content', function () {
+    config()->set('seo.canonical_url', 'https://airgadget.ir');
+    $category = Category::create([
+        'name' => 'Chargers',
+        'slug' => 'chargers',
+        'description' => 'A useful category buying guide.',
+        'meta_title' => 'Buy Chargers',
+        'meta_description' => 'Compare charger models.',
+    ]);
+
+    $this->get('/categories/chargers?page=2')
+        ->assertOk()
+        ->assertHeader('X-Robots-Tag', 'index,follow')
+        ->assertSee('<link rel="canonical" href="https://airgadget.ir/categories/chargers?page=2">', false)
+        ->assertInertia(fn ($page) => $page
+            ->component('Storefront')
+            ->where('selectedCategory.description', 'A useful category buying guide.')
+            ->where('selectedCategory.meta_title', 'Buy Chargers')
+            ->where('selectedCategory.meta_description', 'Compare charger models.'));
 });
 
 test('product canonical defaults to its route and supports an explicit canonical', function () {

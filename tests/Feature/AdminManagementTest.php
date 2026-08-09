@@ -194,6 +194,27 @@ test('storefront is declared as Persian and right to left', function () {
         ->assertSee('<html lang="fa" dir="rtl">', false);
 });
 
+test('admin can maintain unique content and seo fields for a product category', function () {
+    $admin = User::factory()->create(['is_admin' => true]);
+    $category = Category::create(['name' => 'کابل', 'slug' => 'cables']);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.categories.update', $category), [
+            'name' => 'کابل و مبدل',
+            'description' => 'راهنمای انتخاب کابل بر اساس نوع درگاه، توان و طول کابل.',
+            'meta_title' => 'خرید کابل و مبدل موبایل',
+            'meta_description' => 'انواع کابل شارژ و تبدیل را مقایسه و انتخاب کنید.',
+            'meta_keywords' => 'کابل شارژ, مبدل موبایل',
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($category->fresh())
+        ->name->toBe('کابل و مبدل')
+        ->slug->toBe('cables')
+        ->description->toContain('راهنمای انتخاب کابل')
+        ->meta_title->toBe('خرید کابل و مبدل موبایل');
+});
+
 test('article can be created without a topic or meta keywords', function () {
     Storage::fake('public');
     $admin = User::factory()->create(['is_admin' => true]);

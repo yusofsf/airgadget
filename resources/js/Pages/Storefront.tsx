@@ -4,11 +4,22 @@ import axios from 'axios';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 
 type Brand = { id: number; name: string };
-type Category = { id: number; name: string; slug?: string; products_count?: number };
+type Category = {
+    id: number;
+    name: string;
+    slug?: string;
+    description?: string | null;
+    meta_title?: string | null;
+    meta_description?: string | null;
+    meta_keywords?: string | null;
+    canonical_url?: string | null;
+    updated_at?: string | null;
+    products_count?: number;
+};
 type UploadedImage = { id?: number; path: string; sort_order?: number };
 type ProductSpecification = { id?: number; key: string; value: string };
 type Tag = { id: number; name: string; slug: string; products_count?: number; articles_count?: number };
-type ArticleCategory = { id: number; name: string; slug: string; description?: string | null; articles_count?: number };
+type ArticleCategory = { id: number; name: string; slug: string; description?: string | null; meta_title?: string | null; meta_description?: string | null; articles_count?: number };
 type ShopFilters = { brand_id: string; category_id: string; min_price: string; max_price: string; status: '' | 'sale' | 'stock' };
 type Product = {
     id: number;
@@ -23,6 +34,7 @@ type Product = {
     meta_description?: string | null;
     meta_keywords?: string | null;
     canonical_url?: string | null;
+    updated_at?: string | null;
     gallery?: string[] | null;
     weight?: number | null;
     dimensions?: string | null;
@@ -49,6 +61,7 @@ type Article = {
     meta_keywords?: string | null;
     canonical_url?: string | null;
     published_at?: string | null;
+    updated_at?: string | null;
     is_published?: boolean;
     tags?: Tag[];
     category?: ArticleCategory | null;
@@ -305,9 +318,9 @@ export default function Storefront({
     const [searchResults, setSearchResults] = useState<ProductSearchResult[]>([]);
     const [searchOpen, setSearchOpen] = useState(false);
     const [searchLoading, setSearchLoading] = useState(false);
-    const [initialCart] = useState<StoredCart>(readStoredCart);
-    const [cart, setCart] = useState<CardProduct[]>(initialCart.items);
-    const [cartExpiresAt, setCartExpiresAt] = useState<number | null>(initialCart.expiresAt);
+    const [cart, setCart] = useState<CardProduct[]>([]);
+    const [cartExpiresAt, setCartExpiresAt] = useState<number | null>(null);
+    const [cartLoaded, setCartLoaded] = useState(false);
     const [fav, setFav] = useState<number[]>(() => favoriteProductIds.map(Number));
     const [panel, setPanel] = useState<'cart' | 'account' | null>(null);
     const [cartNotice, setCartNotice] = useState<string | null>(null);
@@ -318,7 +331,25 @@ export default function Storefront({
     const productItems: Product[] = Array.isArray(products) ? products : products?.data || [];
     const list = productItems.map(toCard);
     const heroImage = '/images/airpods-pro.jpg';
-    const pageSeo = resolveSeo(view, product, article, selectedCategory, selectedTag, selectedArticleCategory);
+    const currentPage = Number((products as PaginatedProducts)?.current_page || (articles as PaginatedArticles)?.current_page || 1);
+    const pageSeo = resolveSeo(view, product, article, selectedCategory, selectedTag, selectedArticleCategory, currentPage);
+    const structuredData = resolveStructuredData({
+        view,
+        product,
+        article,
+        selectedCategory,
+        selectedTag,
+        selectedArticleCategory,
+        canonical: seo?.canonical,
+        robots: seo?.robots,
+        pageSeo,
+    });
+    useEffect(() => {
+        const storedCart = readStoredCart();
+        setCart(storedCart.items);
+        setCartExpiresAt(storedCart.expiresAt);
+        setCartLoaded(true);
+    }, []);
     useEffect(() => {
         const term = search.trim();
         if (term.length < 2) {
@@ -378,8 +409,9 @@ export default function Storefront({
         [list, search],
     );
     useEffect(() => {
+        if (!cartLoaded) return;
         window.localStorage.setItem('airgadget-cart', JSON.stringify({ items: cart, expiresAt: cartExpiresAt }));
-    }, [cart, cartExpiresAt]);
+    }, [cart, cartExpiresAt, cartLoaded]);
     useEffect(() => {
         if (!cartNotice) return;
         const timer = window.setTimeout(() => setCartNotice(null), 3000);
@@ -489,6 +521,15 @@ export default function Storefront({
                 <meta property="og:type" content={view === 'article' ? 'article' : view === 'product' ? 'product' : 'website'} />
                 {pageSeo.image && <meta property="og:image" content={pageSeo.image} />}
                 {seo?.canonical && <meta property="og:url" content={seo.canonical} />}
+                <meta property="og:locale" content="fa_IR" />
+                <meta name="twitter:card" content={pageSeo.image ? 'summary_large_image' : 'summary'} />
+                {structuredData.map((schema, index) => (
+                    <script
+                        type="application/ld+json"
+                        key={`structured-data-${index}`}
+                        dangerouslySetInnerHTML={{ __html: serializeStructuredData(schema) }}
+                    />
+                ))}
             </Head>
             <div className="site" dir="rtl">
                 {cartNotice && <div className="cart-notice" role="alert">{cartNotice}</div>}
@@ -674,6 +715,9 @@ export default function Storefront({
                             <div>
                                 <em>{view === 'shop' ? 'کالای مورد علاقه‌تان را پیدا کنید' : 'تازه از راه رسیده'}</em>
                                 <h2>{selectedCategory?.name || (view === 'shop' ? 'همه محصولات' : 'آخرین محصولات')}</h2>
+                                {view === 'shop' && selectedCategory?.description && (
+                                    <p className="category-description">{selectedCategory.description}</p>
+                                )}
                             </div>
                             {view === 'shop' && (
                                 <div className="filters">
@@ -814,7 +858,9 @@ function ProductCard({ p, add, fav, toggle }: any) {
     );
 }
 
-function resolveSeo(view: string, product?: Product, article?: Article, selectedCategory?: Category, selectedTag?: Tag, selectedArticleCategory?: ArticleCategory): SeoMeta {
+function resolveSeo(view: string, product?: Product, article?: Article, selectedCategory?: Category, selectedTag?: Tag, selectedArticleCategory?: ArticleCategory, currentPage = 1): SeoMeta {
+    const pageSuffix = currentPage > 1 ? ` | صفحه ${new Intl.NumberFormat('fa-IR').format(currentPage)}` : '';
+
     if (view === 'product' && product) {
         return {
             title: product.meta_title || `${product.name} | ایرگجت`,
@@ -835,8 +881,9 @@ function resolveSeo(view: string, product?: Product, article?: Article, selected
 
     if (view === 'shop' && selectedCategory) {
         return {
-            title: `${selectedCategory.name} | فروشگاه ایرگجت`,
-            description: `خرید محصولات دسته ${selectedCategory.name} از فروشگاه ایرگجت`,
+            title: `${selectedCategory.meta_title || `${selectedCategory.name} | فروشگاه ایرگجت`}${pageSuffix}`,
+            description: selectedCategory.meta_description || selectedCategory.description || `خرید محصولات دسته ${selectedCategory.name} از فروشگاه ایرگجت`,
+            keywords: selectedCategory.meta_keywords || undefined,
         };
     }
 
@@ -849,21 +896,21 @@ function resolveSeo(view: string, product?: Product, article?: Article, selected
 
     if (view === 'articles' && selectedArticleCategory) {
         return {
-            title: `${selectedArticleCategory.name} | مجله ایرگجت`,
-            description: selectedArticleCategory.description || `مقالات دسته‌بندی ${selectedArticleCategory.name} در مجله ایرگجت`,
+            title: `${selectedArticleCategory.meta_title || `${selectedArticleCategory.name} | مجله ایرگجت`}${pageSuffix}`,
+            description: selectedArticleCategory.meta_description || selectedArticleCategory.description || `مقالات دسته‌بندی ${selectedArticleCategory.name} در مجله ایرگجت`,
         };
     }
 
     if (view === 'articles') {
         return {
-            title: 'مجله ایرگجت | راهنمای خرید و آموزش',
+            title: `مجله ایرگجت | راهنمای خرید و آموزش${pageSuffix}`,
             description: 'راهنما، آموزش و بررسی تخصصی لوازم جانبی موبایل، ایرپاد، شارژر و گجت‌های هوشمند',
         };
     }
 
     if (view === 'shop') {
         return {
-            title: 'فروشگاه ایرگجت | خرید لوازم جانبی موبایل',
+            title: `فروشگاه ایرگجت | خرید لوازم جانبی موبایل${pageSuffix}`,
             description: 'خرید لوازم جانبی موبایل، ایرپاد، شارژر، کابل، قاب و گجت با پشتیبانی ایرگجت',
         };
     }
@@ -875,6 +922,174 @@ function resolveSeo(view: string, product?: Product, article?: Article, selected
         keywords: 'لوازم جانبی موبایل, ایرپاد, شارژر, قاب گوشی, گجت',
     };
 }
+
+type StructuredDataContext = {
+    view: string;
+    product?: Product;
+    article?: Article;
+    selectedCategory?: Category;
+    selectedTag?: Tag;
+    selectedArticleCategory?: ArticleCategory;
+    canonical?: string;
+    robots?: string;
+    pageSeo: SeoMeta;
+};
+
+const serializeStructuredData = (value: Record<string, unknown>): string =>
+    JSON.stringify(value).replace(/</g, '\\u003c');
+
+const resolveStructuredData = ({
+    view,
+    product,
+    article,
+    selectedCategory,
+    selectedTag,
+    selectedArticleCategory,
+    canonical,
+    robots,
+    pageSeo,
+}: StructuredDataContext): Record<string, unknown>[] => {
+    if (!canonical || robots?.startsWith('noindex')) return [];
+
+    const origin = new URL(canonical).origin;
+    const absoluteUrl = (path?: string | null) => path ? new URL(path, origin).toString() : undefined;
+    const storeId = `${origin}/#store`;
+    const websiteId = `${origin}/#website`;
+    const schemas: Record<string, unknown>[] = [{
+        '@context': 'https://schema.org',
+        '@type': 'OnlineStore',
+        '@id': storeId,
+        name: 'ایرگجت',
+        url: origin,
+        logo: absoluteUrl('/airgadget-logo.png'),
+        telephone: supportPhone,
+        address: {
+            '@type': 'PostalAddress',
+            streetAddress: storeAddress,
+            addressLocality: 'مشهد',
+            addressRegion: 'خراسان رضوی',
+            addressCountry: 'IR',
+        },
+    }];
+
+    if (view === 'home') {
+        schemas.push({
+            '@context': 'https://schema.org',
+            '@type': 'WebSite',
+            '@id': websiteId,
+            name: 'ایرگجت',
+            url: origin,
+            inLanguage: 'fa-IR',
+            publisher: { '@id': storeId },
+        });
+    }
+
+    const breadcrumbs: { name: string; item: string }[] = [
+        { name: 'خانه', item: `${origin}/` },
+    ];
+
+    if (view === 'product' && product) {
+        breadcrumbs.push({ name: 'فروشگاه', item: `${origin}/shop` });
+        if (product.category?.slug) {
+            breadcrumbs.push({
+                name: product.category.name,
+                item: absoluteUrl(`/categories/${product.category.slug}`) as string,
+            });
+        }
+        breadcrumbs.push({ name: product.name, item: canonical });
+
+        const productImage = absoluteUrl(pageSeo.image);
+        const price = Number(product.sale_price || product.price || 0) * 10;
+        schemas.push({
+            '@context': 'https://schema.org',
+            '@type': 'Product',
+            '@id': `${canonical}#product`,
+            name: product.name,
+            description: pageSeo.description,
+            ...(productImage ? { image: [productImage] } : {}),
+            ...(product.sku ? { sku: product.sku } : {}),
+            ...(product.brand?.name ? { brand: { '@type': 'Brand', name: product.brand.name } } : {}),
+            ...(product.category?.name ? { category: product.category.name } : {}),
+            offers: {
+                '@type': 'Offer',
+                url: canonical,
+                priceCurrency: 'IRR',
+                price,
+                availability: product.stock > 0
+                    ? 'https://schema.org/InStock'
+                    : 'https://schema.org/OutOfStock',
+                itemCondition: 'https://schema.org/NewCondition',
+                seller: { '@id': storeId },
+            },
+        });
+    } else if (view === 'article' && article) {
+        breadcrumbs.push({ name: 'مجله', item: `${origin}/articles` });
+        if (article.category?.slug) {
+            breadcrumbs.push({
+                name: article.category.name,
+                item: absoluteUrl(`/articles/categories/${article.category.slug}`) as string,
+            });
+        }
+        breadcrumbs.push({ name: article.title, item: canonical });
+
+        const articleImage = absoluteUrl(pageSeo.image);
+        schemas.push({
+            '@context': 'https://schema.org',
+            '@type': 'Article',
+            '@id': `${canonical}#article`,
+            headline: article.title,
+            description: pageSeo.description,
+            ...(articleImage ? { image: [articleImage] } : {}),
+            ...(article.published_at ? { datePublished: article.published_at } : {}),
+            ...(article.updated_at ? { dateModified: article.updated_at } : {}),
+            inLanguage: 'fa-IR',
+            mainEntityOfPage: canonical,
+            author: { '@id': storeId },
+            publisher: { '@id': storeId },
+        });
+    } else if (view === 'shop') {
+        breadcrumbs.push({ name: 'فروشگاه', item: `${origin}/shop` });
+        if (selectedCategory) breadcrumbs.push({ name: selectedCategory.name, item: canonical });
+        schemas.push({
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            '@id': `${canonical}#collection`,
+            name: pageSeo.title,
+            description: pageSeo.description,
+            url: canonical,
+            inLanguage: 'fa-IR',
+        });
+    } else if (view === 'articles') {
+        breadcrumbs.push({ name: 'مجله', item: `${origin}/articles` });
+        if (selectedArticleCategory) breadcrumbs.push({ name: selectedArticleCategory.name, item: canonical });
+        schemas.push({
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            '@id': `${canonical}#collection`,
+            name: pageSeo.title,
+            description: pageSeo.description,
+            url: canonical,
+            inLanguage: 'fa-IR',
+        });
+    } else if (view === 'tag' && selectedTag) {
+        breadcrumbs.push({ name: selectedTag.name, item: canonical });
+    }
+
+    if (breadcrumbs.length > 1) {
+        schemas.push({
+            '@context': 'https://schema.org',
+            '@type': 'BreadcrumbList',
+            itemListElement: breadcrumbs.map((breadcrumb, index) => ({
+                '@type': 'ListItem',
+                position: index + 1,
+                name: breadcrumb.name,
+                item: breadcrumb.item,
+            })),
+        });
+    }
+
+    return schemas;
+};
 
 function SpecificationEditor({ specifications, onChange }: { specifications: ProductSpecification[]; onChange: (specifications: ProductSpecification[]) => void }) {
     const update = (index: number, field: 'key' | 'value', value: string) => {
@@ -1766,7 +1981,7 @@ function Admin({
                 <section className={tab === 'articles' ? '' : 'admin-hidden'}>
                     <h2>مدیریت همه مقالات</h2>
                     <AdminArticles articles={articles} />
-                    <TaxonomyManagement tags={tags} articleCategories={articleCategories} />
+                    <TaxonomyManagement categories={categories} tags={tags} articleCategories={articleCategories} />
                 </section>
             </div>
             {tab === 'accounting' && <AccountingPanel accounting={accounting} />}
@@ -2145,9 +2360,14 @@ function ArticleManager({ article }: { article: Article }) {
     );
 }
 
-function TaxonomyManagement({ tags, articleCategories }: { tags: Tag[]; articleCategories: ArticleCategory[] }) {
+function TaxonomyManagement({ categories, tags, articleCategories }: { categories: Category[]; tags: Tag[]; articleCategories: ArticleCategory[] }) {
     return (
         <section className="taxonomy-management">
+            <h2>محتوا و سئوی دسته‌بندی محصولات</h2>
+            <p className="panel-help">برای هر دسته متن اختصاصی بنویسید تا صفحه فقط فهرستی از محصولات نباشد.</p>
+            <div className="taxonomy-list">
+                {categories.length ? categories.map((category) => <ProductCategorySeoRow key={category.id} category={category} />) : <p>هنوز دسته‌بندی محصولی ثبت نشده است.</p>}
+            </div>
             <h2>مدیریت تگ‌ها</h2>
             <div className="taxonomy-list">
                 {tags.length ? tags.map((tag) => <TaxonomyRow key={tag.id} item={tag} type="tag" />) : <p>هنوز تگی ثبت نشده است.</p>}
@@ -2160,8 +2380,38 @@ function TaxonomyManagement({ tags, articleCategories }: { tags: Tag[]; articleC
     );
 }
 
+function ProductCategorySeoRow({ category }: { category: Category }) {
+    const form = useForm({
+        name: category.name,
+        description: category.description || '',
+        meta_title: category.meta_title || '',
+        meta_description: category.meta_description || '',
+        meta_keywords: category.meta_keywords || '',
+    });
+
+    return (
+        <form className="taxonomy-row category-seo-row" onSubmit={(event) => {
+            event.preventDefault();
+            form.patch(route('admin.categories.update', category.id), { preserveScroll: true });
+        }}>
+            <input value={form.data.name} onChange={(event) => form.setData('name', event.target.value)} aria-label="نام دسته‌بندی محصول" />
+            <textarea value={form.data.description} onChange={(event) => form.setData('description', event.target.value)} placeholder="متن اختصاصی و راهنمای خرید این دسته" />
+            <input value={form.data.meta_title} onChange={(event) => form.setData('meta_title', event.target.value)} placeholder="عنوان سئو" />
+            <textarea value={form.data.meta_description} onChange={(event) => form.setData('meta_description', event.target.value)} placeholder="توضیحات متا" />
+            <input value={form.data.meta_keywords} onChange={(event) => form.setData('meta_keywords', event.target.value)} placeholder="عبارت‌های کلیدی، جداشده با ویرگول" />
+            <button className="primary" disabled={form.processing}>ذخیره محتوا</button>
+            {Object.keys(form.errors).length > 0 && <span className="form-error">مقادیر این دسته‌بندی را بررسی کنید.</span>}
+        </form>
+    );
+}
+
 function TaxonomyRow({ item, type }: { item: Tag | ArticleCategory; type: 'tag' | 'category' }) {
-    const form = useForm({ name: item.name, description: 'description' in item ? item.description || '' : '' });
+    const form = useForm({
+        name: item.name,
+        description: 'description' in item ? item.description || '' : '',
+        meta_title: 'meta_title' in item ? item.meta_title || '' : '',
+        meta_description: 'meta_description' in item ? item.meta_description || '' : '',
+    });
     const updateRoute = type === 'tag' ? route('admin.tags.update', item.id) : route('admin.article-categories.update', item.id);
     const destroyRoute = type === 'tag' ? route('admin.tags.destroy', item.id) : route('admin.article-categories.destroy', item.id);
     const count = type === 'tag'
@@ -2172,6 +2422,8 @@ function TaxonomyRow({ item, type }: { item: Tag | ArticleCategory; type: 'tag' 
         <form className="taxonomy-row" onSubmit={(event) => { event.preventDefault(); form.patch(updateRoute, { preserveScroll: true }); }}>
             <input value={form.data.name} onChange={(event) => form.setData('name', event.target.value)} aria-label="نام" />
             {type === 'category' && <input value={form.data.description} onChange={(event) => form.setData('description', event.target.value)} placeholder="توضیحات دسته‌بندی" />}
+            {type === 'category' && <input value={form.data.meta_title} onChange={(event) => form.setData('meta_title', event.target.value)} placeholder="عنوان سئو" />}
+            {type === 'category' && <input value={form.data.meta_description} onChange={(event) => form.setData('meta_description', event.target.value)} placeholder="توضیحات متا" />}
             <small>{new Intl.NumberFormat('fa-IR').format(count)} مورد مرتبط</small>
             <button className="primary" disabled={form.processing}>ویرایش</button>
             <button type="button" className="danger-button" onClick={() => { if (window.confirm(`«${item.name}» حذف شود؟`)) router.delete(destroyRoute, { preserveScroll: true }); }}>حذف</button>

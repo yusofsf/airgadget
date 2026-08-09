@@ -10,8 +10,8 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\StoreSetting;
 use App\Models\Tag;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 
@@ -114,7 +114,10 @@ class StoreController extends Controller
             'view' => 'shop',
             'products' => $products,
             'filteredProductCount' => $products->total(),
-            'selectedCategory' => $selectedCategory?->only(['id', 'name', 'slug']),
+            'selectedCategory' => $selectedCategory?->only([
+                'id', 'name', 'slug', 'description', 'meta_title', 'meta_description',
+                'meta_keywords', 'canonical_url',
+            ]),
             'shopFilters' => [
                 'brand_id' => $brandId ? (string) $brandId : '',
                 'category_id' => $categoryId ? (string) $categoryId : '',
@@ -152,7 +155,9 @@ class StoreController extends Controller
             'view' => 'articles',
             'articles' => Article::with(['tags', 'category'])->where('is_published', true)->whereBelongsTo($articleCategory, 'category')->latest('published_at')->paginate(6),
             'articleCategories' => ArticleCategory::whereHas('articles', fn ($query) => $query->where('is_published', true))->orderBy('name')->get(['id', 'name', 'slug']),
-            'selectedArticleCategory' => $articleCategory->only(['id', 'name', 'slug']),
+            'selectedArticleCategory' => $articleCategory->only([
+                'id', 'name', 'slug', 'description', 'meta_title', 'meta_description',
+            ]),
         ]);
     }
 
@@ -250,7 +255,9 @@ class StoreController extends Controller
             'view' => 'admin',
             'products' => Product::with(['brand', 'category', 'images', 'tags'])->latest()->get(),
             'articles' => Article::with(['tags', 'category'])->latest()->get(),
-            'categories' => Category::orderBy('name')->get(['id', 'name']),
+            'categories' => Category::orderBy('name')->get([
+                'id', 'name', 'slug', 'description', 'meta_title', 'meta_description', 'meta_keywords',
+            ]),
             'brands' => Brand::orderBy('name')->get(['id', 'name']),
             'tags' => Tag::withCount(['products', 'articles'])->orderBy('name')->get(),
             'articleCategories' => ArticleCategory::withCount('articles')->orderBy('name')->get(),

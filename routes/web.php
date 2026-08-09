@@ -58,6 +58,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/admin/products/{product}', [ProductController::class, 'show'])->name('admin.products.show');
         Route::patch('/admin/products/{product}', [ProductController::class, 'update'])->name('admin.products.update');
         Route::delete('/admin/products/{product}', [ProductController::class, 'destroy'])->name('admin.products.destroy');
+        Route::patch('/admin/categories/{category}', [TaxonomyController::class, 'updateCategory'])->name('admin.categories.update');
         Route::post('/admin/articles', [ArticleController::class, 'store'])->name('admin.articles.store');
         Route::patch('/admin/articles/{article}', [ArticleController::class, 'update'])->name('admin.articles.update');
         Route::delete('/admin/articles/{article}', [ArticleController::class, 'destroy'])->name('admin.articles.destroy');

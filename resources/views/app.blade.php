@@ -17,8 +17,6 @@
         <link rel="icon" type="image/png" sizes="192x192" href="/pwa/icon-192.png">
         <link rel="apple-touch-icon" sizes="180x180" href="/pwa/apple-touch-icon.png">
 
-        <title inertia>{{ config('app.name', 'Laravel') }}</title>
-
         <!-- Scripts -->
         @routes
         @viteReactRefresh

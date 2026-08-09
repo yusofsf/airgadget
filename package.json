@@ -3,7 +3,11 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "tsc && vite build"
+        "build": "tsc && vite build && vite build --ssr",
+        "build:client": "tsc && vite build",
+        "build:ssr": "vite build --ssr",
+        "ssr:start": "php artisan inertia:start-ssr",
+        "ssr:stop": "php artisan inertia:stop-ssr"
     },
     "devDependencies": {
         "@headlessui/react": "^1.4.2",
