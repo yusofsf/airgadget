@@ -5,14 +5,14 @@ use App\Models\ArticleCategory;
 use App\Models\Tag;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('magazine paginates published articles six at a time without top-level tags', function () {
+test('magazine paginates published articles ten at a time without top-level tags', function () {
     $category = ArticleCategory::create([
         'name' => 'راهنمای خرید',
         'slug' => 'buying-guides',
     ]);
     Tag::create(['name' => 'موبایل', 'slug' => 'mobile']);
 
-    foreach (range(1, 8) as $number) {
+    foreach (range(1, 12) as $number) {
         Article::create([
             'article_category_id' => $category->id,
             'title' => "مقاله {$number}",
@@ -28,11 +28,11 @@ test('magazine paginates published articles six at a time without top-level tags
         ->assertInertia(fn (Assert $page) => $page
             ->component('Storefront')
             ->where('view', 'articles')
-            ->has('articles.data', 6)
+            ->has('articles.data', 10)
             ->where('articles.current_page', 1)
-            ->where('articles.per_page', 6)
+            ->where('articles.per_page', 10)
             ->where('articles.last_page', 2)
-            ->where('articles.total', 8)
+            ->where('articles.total', 12)
             ->missing('tags')
         );
 
@@ -41,17 +41,17 @@ test('magazine paginates published articles six at a time without top-level tags
         ->assertInertia(fn (Assert $page) => $page
             ->has('articles.data', 2)
             ->where('articles.current_page', 2)
-            ->where('articles.per_page', 6)
+            ->where('articles.per_page', 10)
         );
 });
 
-test('topic pages use the same six-article pagination', function () {
+test('topic pages use the same ten-article pagination', function () {
     $category = ArticleCategory::create([
         'name' => 'بررسی تخصصی',
         'slug' => 'reviews',
     ]);
 
-    foreach (range(1, 7) as $number) {
+    foreach (range(1, 11) as $number) {
         Article::create([
             'article_category_id' => $category->id,
             'title' => "بررسی {$number}",
@@ -66,8 +66,8 @@ test('topic pages use the same six-article pagination', function () {
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->where('selectedArticleCategory.id', $category->id)
-            ->has('articles.data', 6)
-            ->where('articles.per_page', 6)
+            ->has('articles.data', 10)
+            ->where('articles.per_page', 10)
             ->where('articles.last_page', 2)
             ->missing('tags')
         );

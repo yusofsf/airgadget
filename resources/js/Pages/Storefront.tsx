@@ -77,6 +77,7 @@ type Ticket = { id: number; number: string; subject: string; status: 'open' | 'a
 type PaginatedTickets = { data: Ticket[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
 type PaginatedArticles = { data: Article[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
 type PaginatedProducts = { data: Product[]; current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null; total: number };
+type AdminProductStats = { total: number; in_stock: number };
 type Accounting = { received: number; product_revenue: number; shipping_revenue: number; sold_items: number; paid_orders: number; pending_orders: number };
 type CardProduct = {
     id: number;
@@ -313,6 +314,10 @@ export default function Storefront({
     tickets = [],
     ticket,
     seo,
+    adminTab = 'accounting',
+    adminProductStats = { total: 0, in_stock: 0 },
+    accountSection = 'orders',
+    accountOrderStats = { total: 0, completed: 0 },
 }: any) {
     const [search, setSearch] = useState('');
     const [searchResults, setSearchResults] = useState<ProductSearchResult[]>([]);
@@ -672,13 +677,13 @@ export default function Storefront({
                 {view === 'articles' ? (
                     <Articles articles={articles} articleCategories={articleCategories} selectedArticleCategory={selectedArticleCategory} />
                 ) : view === 'tag' ? (
-                    <TagLanding tag={selectedTag} products={productItems} articles={Array.isArray(articles) ? articles : []} add={addToCart} />
+                    <TagLanding tag={selectedTag} products={products || []} articles={articles || []} add={addToCart} />
                 ) : view === 'article' ? (
                     <ArticleDetail article={article} />
                 ) : view === 'product' ? (
                     <ProductDetail product={product} add={addToCart} favorite={fav.includes(product?.id)} toggleFavorite={toggleFavorite} />
                 ) : view === 'admin' ? (
-                    <Admin products={productItems} articles={Array.isArray(articles) ? articles : []} categories={categories} brands={brands} tags={tags} articleCategories={articleCategories} accounting={accounting} shippingMethods={shippingMethods} />
+                    <Admin products={products || []} articles={articles || []} categories={categories} brands={brands} tags={tags} articleCategories={articleCategories} accounting={accounting} shippingMethods={shippingMethods} initialTab={adminTab} productStats={adminProductStats} />
                 ) : view === 'admin-orders' ? (
                     <AdminOrders orders={orders} products={orderProducts} users={orderUsers} shippingMethods={orderShippingMethods} />
                 ) : view === 'admin-users' ? (
@@ -692,7 +697,7 @@ export default function Storefront({
                 ) : view === 'admin-product' ? (
                     <AdminProductEditor product={adminProduct} categories={categories} brands={brands} />
                 ) : view === 'account' ? (
-                    <Account orders={orders} auth={auth} favoriteProducts={favoriteProducts} favoriteIds={fav} add={addToCart} toggleFavorite={toggleFavorite} completeProfile={completeProfile} />
+                    <Account orders={orders} auth={auth} favoriteProducts={favoriteProducts} favoriteIds={fav} add={addToCart} toggleFavorite={toggleFavorite} completeProfile={completeProfile} initialSection={accountSection} orderStats={accountOrderStats} />
                 ) : view === 'tickets' ? (
                     <TicketsPage tickets={tickets} />
                 ) : view === 'ticket' ? (
@@ -1268,18 +1273,22 @@ function Articles({ articles, articleCategories, selectedArticleCategory }: { ar
     );
 }
 
-function TagLanding({ tag, products, articles, add }: { tag: Tag; products: Product[]; articles: Article[]; add: (product: CardProduct) => void }) {
+function TagLanding({ tag, products, articles, add }: { tag: Tag; products: PaginatedProducts | Product[]; articles: PaginatedArticles | Article[]; add: (product: CardProduct) => void }) {
+    const productItems = Array.isArray(products) ? products : products.data;
+    const articleItems = Array.isArray(articles) ? articles : articles.data;
+
     return (
         <main className="page tag-landing">
             <em>برچسب</em>
             <h1>#{tag.name}</h1>
             <h2>محصولات مرتبط</h2>
             <div className="grid">
-                {products.length ? products.map((product) => <ProductCard key={product.id} p={toCard(product)} add={add} fav={false} toggle={() => undefined} />) : <p>محصولی با این تگ ثبت نشده است.</p>}
+                {productItems.length ? productItems.map((product) => <ProductCard key={product.id} p={toCard(product)} add={add} fav={false} toggle={() => undefined} />) : <p>محصولی با این تگ ثبت نشده است.</p>}
             </div>
+            {!Array.isArray(products) && <PaginationNav pagination={products} label="صفحه‌بندی محصولات مرتبط" />}
             <h2>مقالات مرتبط</h2>
             <div className="article-grid">
-                {articles.length ? articles.map((article) => (
+                {articleItems.length ? articleItems.map((article) => (
                     <article className="article" key={article.id}>
                         {article.image ? <img src={article.image} alt={article.title} loading="lazy" /> : <div className="article-image" />}
                         <small>{article.category?.name || 'مجله ایرگجت'}</small>
@@ -1289,6 +1298,7 @@ function TagLanding({ tag, products, articles, add }: { tag: Tag; products: Prod
                     </article>
                 )) : <p>مقاله‌ای با این تگ ثبت نشده است.</p>}
             </div>
+            {!Array.isArray(articles) && <PaginationNav pagination={articles} label="صفحه‌بندی مقالات مرتبط" />}
         </main>
     );
 }
@@ -1387,9 +1397,12 @@ function StaticPage({ type }: any) {
     );
 }
 
-function Account({ orders, auth, favoriteProducts, favoriteIds, add, toggleFavorite, completeProfile }: { orders: Order[]; auth: any; favoriteProducts: Product[]; favoriteIds: number[]; add: (product: CardProduct) => void; toggleFavorite: (productId: number) => void; completeProfile: boolean }) {
+function Account({ orders, auth, favoriteProducts, favoriteIds, add, toggleFavorite, completeProfile, initialSection, orderStats }: { orders: PaginatedOrders | Order[]; auth: any; favoriteProducts: PaginatedProducts | Product[]; favoriteIds: number[]; add: (product: CardProduct) => void; toggleFavorite: (productId: number) => void; completeProfile: boolean; initialSection: 'orders' | 'favorites' | 'profile'; orderStats: { total: number; completed: number } }) {
     const { props } = usePage<any>();
-    const [section, setSection] = useState<'orders' | 'favorites' | 'profile'>(completeProfile ? 'profile' : 'orders');
+    const orderItems = Array.isArray(orders) ? orders : orders.data;
+    const favoriteItems = (Array.isArray(favoriteProducts) ? favoriteProducts : favoriteProducts.data).filter((item) => favoriteIds.includes(item.id));
+    const [section, setSection] = useState<'orders' | 'favorites' | 'profile'>(completeProfile ? 'profile' : initialSection);
+    useEffect(() => setSection(completeProfile ? 'profile' : initialSection), [completeProfile, initialSection]);
     const profile = useForm({
         first_name: auth?.user?.first_name || '',
         last_name: auth?.user?.last_name || '',
@@ -1419,9 +1432,9 @@ function Account({ orders, auth, favoriteProducts, favoriteIds, add, toggleFavor
                     {section === 'orders' ? <>
                         <h2>سفارش‌های من</h2>
                         <p>{auth?.user?.first_name || 'کاربر'} عزیز، وضعیت سفارش‌ها و فاکتورهای شما اینجاست.</p>
-                        <div className="stats"><b>{new Intl.NumberFormat('fa-IR').format(orders.length)}<small>کل سفارش‌ها</small></b><b>{new Intl.NumberFormat('fa-IR').format(orders.filter((order) => order.status === 'completed').length)}<small>تکمیل‌شده</small></b></div>
+                        <div className="stats"><b>{new Intl.NumberFormat('fa-IR').format(orderStats.total ?? orderItems.length)}<small>کل سفارش‌ها</small></b><b>{new Intl.NumberFormat('fa-IR').format(orderStats.completed ?? orderItems.filter((order) => order.status === 'completed').length)}<small>تکمیل‌شده</small></b></div>
                         <div className="customer-orders">
-                            {orders.length ? orders.map((order) => (
+                            {orderItems.length ? orderItems.map((order) => (
                                 <article key={order.id}>
                                     <span><b>سفارش {order.number}</b><small>{labels[order.status] || order.status}</small></span>
                                     <strong>{toman(Number(order.total))}</strong>
@@ -1429,12 +1442,13 @@ function Account({ orders, auth, favoriteProducts, favoriteIds, add, toggleFavor
                                 </article>
                             )) : <p>هنوز سفارشی ثبت نکرده‌اید.</p>}
                         </div>
+                        {!Array.isArray(orders) && <PaginationNav pagination={orders} label="صفحه‌بندی سفارش‌های من" />}
                     </> : section === 'favorites' ? <>
                         <h2>کالاهای مورد علاقه من</h2>
                         <p>کالاهایی که قبلاً انتخاب کرده‌اید اینجا نگهداری می‌شوند.</p>
-                        {favoriteProducts.filter((item) => favoriteIds.includes(item.id)).length ? (
+                        {favoriteItems.length ? (
                             <div className="product-grid account-favorites">
-                                {favoriteProducts.filter((item) => favoriteIds.includes(item.id)).map((item) => (
+                                {favoriteItems.map((item) => (
                                     <ProductCard
                                         key={item.id}
                                         p={toCard(item)}
@@ -1445,6 +1459,7 @@ function Account({ orders, auth, favoriteProducts, favoriteIds, add, toggleFavor
                                 ))}
                             </div>
                         ) : <div className="no-results"><b>هنوز کالایی انتخاب نکرده‌اید</b><span>از فروشگاه روی علامت قلب کالا بزنید.</span></div>}
+                        {!Array.isArray(favoriteProducts) && <PaginationNav pagination={favoriteProducts} label="صفحه‌بندی کالاهای مورد علاقه" />}
                     </> : <>
                         <h2>ویرایش اطلاعات حساب</h2>
                         <form className="profile-form" onSubmit={(event) => { event.preventDefault(); profile.patch(route('account.profile.update'), { preserveScroll: true, onSuccess: () => profile.reset('password', 'password_confirmation') }); }}>
@@ -1714,23 +1729,30 @@ function Admin({
     articleCategories,
     accounting,
     shippingMethods,
+    initialTab,
+    productStats,
 }: {
-    products: Product[];
-    articles: Article[];
+    products: PaginatedProducts | Product[];
+    articles: PaginatedArticles | Article[];
     categories: Category[];
     brands: Brand[];
     tags: Tag[];
     articleCategories: ArticleCategory[];
     accounting: Accounting;
     shippingMethods: ShippingMethod[];
+    initialTab: 'accounting' | 'products' | 'articles' | 'shipping';
+    productStats: AdminProductStats;
 }) {
     const { props } = usePage<any>();
+    const productItems = Array.isArray(products) ? products : products.data;
+    const articleItems = Array.isArray(articles) ? articles : articles.data;
     const [previews, setPreviews] = useState<string[]>([]);
     const [productUploadProgress, setProductUploadProgress] = useState(0);
     const [productUploadError, setProductUploadError] = useState('');
     const [preparingProductImages, setPreparingProductImages] = useState(false);
     const [articlePreview, setArticlePreview] = useState<string | null>(null);
-    const [tab, setTab] = useState<'accounting' | 'products' | 'articles' | 'shipping'>('accounting');
+    const [tab, setTab] = useState<'accounting' | 'products' | 'articles' | 'shipping'>(initialTab);
+    useEffect(() => setTab(initialTab), [initialTab]);
     const { data, setData, post, processing, errors, reset, transform } = useForm<AdminForm>({
         name: '',
         sku: '',
@@ -1820,9 +1842,9 @@ function Admin({
                 <button className={tab === 'shipping' ? 'active' : ''} onClick={() => setTab('shipping')}>مدیریت ارسال</button>
             </div>
             <div className="dashboard">
-                <div><b>{new Intl.NumberFormat('fa-IR').format(products.length)}</b><small>محصول ثبت‌شده</small></div>
-                <div><b>{new Intl.NumberFormat('fa-IR').format(products.filter((p) => p.stock > 0).length)}</b><small>محصول موجود</small></div>
-                <div><b>{new Intl.NumberFormat('fa-IR').format(articles.length)}</b><small>مقاله</small></div>
+                <div><b>{new Intl.NumberFormat('fa-IR').format(productStats.total ?? productItems.length)}</b><small>محصول ثبت‌شده</small></div>
+                <div><b>{new Intl.NumberFormat('fa-IR').format(productStats.in_stock ?? productItems.filter((p) => p.stock > 0).length)}</b><small>محصول موجود</small></div>
+                <div><b>{new Intl.NumberFormat('fa-IR').format(Array.isArray(articles) ? articleItems.length : articles.total)}</b><small>مقاله</small></div>
                 <div><b>{new Intl.NumberFormat('fa-IR').format(categories.length + brands.length)}</b><small>دسته و برند</small></div>
             </div>
             <div className="admin-grid">
@@ -1990,11 +2012,27 @@ function Admin({
     );
 }
 
-function AdminProducts({ products }: { products: Product[] }) {
+function PaginationNav({ pagination, label, preserveScroll = true }: { pagination: { current_page: number; last_page: number; prev_page_url?: string | null; next_page_url?: string | null }; label: string; preserveScroll?: boolean }) {
+    if (pagination.last_page <= 1) return null;
+
     return (
-        <div className="admin-manage-list">
-            {products.length ? products.map((product) => <ProductManager key={product.id} product={product} />) : <p>هنوز محصولی ثبت نشده است.</p>}
-        </div>
+        <nav className="order-pagination" aria-label={label}>
+            {pagination.prev_page_url ? <Link href={pagination.prev_page_url} preserveScroll={preserveScroll}>صفحه قبل</Link> : <span>صفحه قبل</span>}
+            <b>صفحه {new Intl.NumberFormat('fa-IR').format(pagination.current_page)} از {new Intl.NumberFormat('fa-IR').format(pagination.last_page)}</b>
+            {pagination.next_page_url ? <Link href={pagination.next_page_url} preserveScroll={preserveScroll}>صفحه بعد</Link> : <span>صفحه بعد</span>}
+        </nav>
+    );
+}
+
+function AdminProducts({ products }: { products: PaginatedProducts | Product[] }) {
+    const items = Array.isArray(products) ? products : products.data;
+    return (
+        <>
+            <div className="admin-manage-list">
+                {items.length ? items.map((product) => <ProductManager key={product.id} product={product} />) : <p>هنوز محصولی ثبت نشده است.</p>}
+            </div>
+            {!Array.isArray(products) && <PaginationNav pagination={products} label="صفحه‌بندی مدیریت محصولات" />}
+        </>
     );
 }
 
@@ -2317,11 +2355,15 @@ function AdminProductEditor({ product, categories, brands }: { product: Product;
     );
 }
 
-function AdminArticles({ articles }: { articles: Article[] }) {
+function AdminArticles({ articles }: { articles: PaginatedArticles | Article[] }) {
+    const items = Array.isArray(articles) ? articles : articles.data;
     return (
-        <div className="admin-manage-list">
-            {articles.length ? articles.map((article) => <ArticleManager key={article.id} article={article} />) : <p>هنوز مقاله‌ای ثبت نشده است.</p>}
-        </div>
+        <>
+            <div className="admin-manage-list">
+                {items.length ? items.map((article) => <ArticleManager key={article.id} article={article} />) : <p>هنوز مقاله‌ای ثبت نشده است.</p>}
+            </div>
+            {!Array.isArray(articles) && <PaginationNav pagination={articles} label="صفحه‌بندی مدیریت مقالات" />}
+        </>
     );
 }
 
@@ -2361,22 +2403,46 @@ function ArticleManager({ article }: { article: Article }) {
 }
 
 function TaxonomyManagement({ categories, tags, articleCategories }: { categories: Category[]; tags: Tag[]; articleCategories: ArticleCategory[] }) {
+    const [categoryPage, setCategoryPage] = useState(1);
+    const [tagPage, setTagPage] = useState(1);
+    const [articleCategoryPage, setArticleCategoryPage] = useState(1);
+    const pageItems = <T,>(items: T[], page: number) => items.slice((page - 1) * 10, page * 10);
+    useEffect(() => setCategoryPage((page) => Math.min(page, Math.max(1, Math.ceil(categories.length / 10)))), [categories.length]);
+    useEffect(() => setTagPage((page) => Math.min(page, Math.max(1, Math.ceil(tags.length / 10)))), [tags.length]);
+    useEffect(() => setArticleCategoryPage((page) => Math.min(page, Math.max(1, Math.ceil(articleCategories.length / 10)))), [articleCategories.length]);
+
     return (
         <section className="taxonomy-management">
             <h2>محتوا و سئوی دسته‌بندی محصولات</h2>
             <p className="panel-help">برای هر دسته متن اختصاصی بنویسید تا صفحه فقط فهرستی از محصولات نباشد.</p>
             <div className="taxonomy-list">
-                {categories.length ? categories.map((category) => <ProductCategorySeoRow key={category.id} category={category} />) : <p>هنوز دسته‌بندی محصولی ثبت نشده است.</p>}
+                {categories.length ? pageItems(categories, categoryPage).map((category) => <ProductCategorySeoRow key={category.id} category={category} />) : <p>هنوز دسته‌بندی محصولی ثبت نشده است.</p>}
             </div>
+            <ClientPagination page={categoryPage} total={categories.length} onChange={setCategoryPage} label="صفحه‌بندی دسته‌بندی محصولات" />
             <h2>مدیریت تگ‌ها</h2>
             <div className="taxonomy-list">
-                {tags.length ? tags.map((tag) => <TaxonomyRow key={tag.id} item={tag} type="tag" />) : <p>هنوز تگی ثبت نشده است.</p>}
+                {tags.length ? pageItems(tags, tagPage).map((tag) => <TaxonomyRow key={tag.id} item={tag} type="tag" />) : <p>هنوز تگی ثبت نشده است.</p>}
             </div>
+            <ClientPagination page={tagPage} total={tags.length} onChange={setTagPage} label="صفحه‌بندی تگ‌ها" />
             <h2>مدیریت دسته‌بندی مقالات</h2>
             <div className="taxonomy-list">
-                {articleCategories.length ? articleCategories.map((category) => <TaxonomyRow key={category.id} item={category} type="category" />) : <p>هنوز دسته‌بندی مقاله‌ای ثبت نشده است.</p>}
+                {articleCategories.length ? pageItems(articleCategories, articleCategoryPage).map((category) => <TaxonomyRow key={category.id} item={category} type="category" />) : <p>هنوز دسته‌بندی مقاله‌ای ثبت نشده است.</p>}
             </div>
+            <ClientPagination page={articleCategoryPage} total={articleCategories.length} onChange={setArticleCategoryPage} label="صفحه‌بندی دسته‌بندی مقالات" />
         </section>
+    );
+}
+
+function ClientPagination({ page, total, onChange, label }: { page: number; total: number; onChange: (page: number) => void; label: string }) {
+    const lastPage = Math.ceil(total / 10);
+    if (lastPage <= 1) return null;
+
+    return (
+        <nav className="order-pagination client-pagination" aria-label={label}>
+            <button type="button" disabled={page === 1} onClick={() => onChange(page - 1)}>صفحه قبل</button>
+            <b>صفحه {new Intl.NumberFormat('fa-IR').format(page)} از {new Intl.NumberFormat('fa-IR').format(lastPage)}</b>
+            <button type="button" disabled={page === lastPage} onClick={() => onChange(page + 1)}>صفحه بعد</button>
+        </nav>
     );
 }
 

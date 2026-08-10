@@ -49,7 +49,7 @@ test('a user can persist and remove a favorite product', function () {
     $this->actingAs($user)
         ->get(route('account'))
         ->assertInertia(fn (Assert $page) => $page
-            ->where('favoriteProducts.0.id', $product->id)
+            ->where('favoriteProducts.data.0.id', $product->id)
         );
 
     $this->actingAs($user)

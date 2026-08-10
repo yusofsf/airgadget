@@ -108,7 +108,7 @@ class StoreController extends Controller
                 });
             });
 
-        $products = $productsQuery->latest()->paginate(12)->withQueryString();
+        $products = $productsQuery->latest()->paginate(10)->withQueryString();
 
         return Inertia::render('Storefront', [
             'view' => 'shop',
@@ -144,7 +144,7 @@ class StoreController extends Controller
     {
         return Inertia::render('Storefront', [
             'view' => 'articles',
-            'articles' => Article::with(['tags', 'category'])->where('is_published', true)->latest('published_at')->paginate(6),
+            'articles' => Article::with(['tags', 'category'])->where('is_published', true)->latest('published_at')->paginate(10),
             'articleCategories' => ArticleCategory::whereHas('articles', fn ($query) => $query->where('is_published', true))->orderBy('name')->get(['id', 'name', 'slug']),
         ]);
     }
@@ -153,7 +153,7 @@ class StoreController extends Controller
     {
         return Inertia::render('Storefront', [
             'view' => 'articles',
-            'articles' => Article::with(['tags', 'category'])->where('is_published', true)->whereBelongsTo($articleCategory, 'category')->latest('published_at')->paginate(6),
+            'articles' => Article::with(['tags', 'category'])->where('is_published', true)->whereBelongsTo($articleCategory, 'category')->latest('published_at')->paginate(10),
             'articleCategories' => ArticleCategory::whereHas('articles', fn ($query) => $query->where('is_published', true))->orderBy('name')->get(['id', 'name', 'slug']),
             'selectedArticleCategory' => $articleCategory->only([
                 'id', 'name', 'slug', 'description', 'meta_title', 'meta_description',
@@ -161,17 +161,21 @@ class StoreController extends Controller
         ]);
     }
 
-    public function tag(Tag $tag)
+    public function tag(Request $request, Tag $tag)
     {
         return Inertia::render('Storefront', [
             'view' => 'tag',
             'selectedTag' => $tag->only(['id', 'name', 'slug']),
             'articles' => Article::with(['tags', 'category'])->where('is_published', true)
                 ->whereHas('tags', fn ($query) => $query->whereKey($tag->id))
-                ->latest('published_at')->get(),
+                ->latest('published_at')
+                ->paginate(10, ['*'], 'article_page')
+                ->withQueryString(),
             'products' => Product::with(['brand', 'images', 'tags'])->where('is_active', true)
                 ->whereHas('tags', fn ($query) => $query->whereKey($tag->id))
-                ->latest()->get(),
+                ->latest()
+                ->paginate(10, ['*'], 'product_page')
+                ->withQueryString(),
         ]);
     }
 
@@ -194,20 +198,34 @@ class StoreController extends Controller
     {
         $user = request()->user();
         $orders = $user && Schema::hasTable('orders') && Schema::hasTable('order_items')
-            ? $user->orders()->with('items')->latest()->get()
+            ? $user->orders()->with('items')->latest()
+                ->paginate(10, ['*'], 'order_page')
+                ->withQueryString()
+                ->appends(['section' => 'orders'])
             : collect();
         $favorites = $user && Schema::hasTable('favorite_product_user')
             ? $user->favoriteProducts()
                 ->with(['brand', 'images'])
                 ->where('is_active', true)
                 ->latest('favorite_product_user.created_at')
-                ->get()
+                ->paginate(10, ['*'], 'favorite_page')
+                ->withQueryString()
+                ->appends(['section' => 'favorites'])
             : collect();
 
         return Inertia::render('Storefront', [
             'view' => 'account',
             'orders' => $orders,
             'favoriteProducts' => $favorites,
+            'accountSection' => in_array(request()->query('section'), ['orders', 'favorites', 'profile'], true)
+                ? request()->query('section')
+                : 'orders',
+            'accountOrderStats' => [
+                'total' => method_exists($orders, 'total') ? $orders->total() : $orders->count(),
+                'completed' => $user && Schema::hasTable('orders')
+                    ? $user->orders()->where('status', 'completed')->count()
+                    : 0,
+            ],
             'completeProfile' => request()->boolean('complete_profile'),
         ]);
     }
@@ -226,7 +244,7 @@ class StoreController extends Controller
         ]);
     }
 
-    public function admin()
+    public function admin(Request $request)
     {
         $hasOrders = Schema::hasTable('orders') && Schema::hasTable('order_items');
         $accounting = ['received' => 0, 'product_revenue' => 0, 'shipping_revenue' => 0, 'sold_items' => 0, 'paid_orders' => 0, 'pending_orders' => 0];
@@ -251,10 +269,28 @@ class StoreController extends Controller
             ];
         }
 
+        $products = Product::with(['brand', 'category', 'images', 'tags'])
+            ->latest()
+            ->paginate(10, ['*'], 'product_page')
+            ->withQueryString()
+            ->appends(['tab' => 'products']);
+        $articles = Article::with(['tags', 'category'])
+            ->latest()
+            ->paginate(10, ['*'], 'article_page')
+            ->withQueryString()
+            ->appends(['tab' => 'articles']);
+
         return Inertia::render('Storefront', [
             'view' => 'admin',
-            'products' => Product::with(['brand', 'category', 'images', 'tags'])->latest()->get(),
-            'articles' => Article::with(['tags', 'category'])->latest()->get(),
+            'products' => $products,
+            'articles' => $articles,
+            'adminTab' => in_array($request->query('tab'), ['accounting', 'products', 'articles', 'shipping'], true)
+                ? $request->query('tab')
+                : 'accounting',
+            'adminProductStats' => [
+                'total' => $products->total(),
+                'in_stock' => Product::where('stock', '>', 0)->count(),
+            ],
             'categories' => Category::orderBy('name')->get([
                 'id', 'name', 'slug', 'description', 'meta_title', 'meta_description', 'meta_keywords',
             ]),

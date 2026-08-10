@@ -20,7 +20,7 @@ function createShopProduct(Category $category, Brand $brand, int $number, array 
     ], $overrides));
 }
 
-test('shop paginates active products twelve at a time and exposes the filtered total', function () {
+test('shop paginates active products ten at a time and exposes the filtered total', function () {
     $category = Category::create(['name' => 'Accessories', 'slug' => 'accessories']);
     $brand = Brand::create(['name' => 'Airgadget', 'slug' => 'airgadget']);
 
@@ -32,9 +32,9 @@ test('shop paginates active products twelve at a time and exposes the filtered t
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('Storefront')
-            ->has('products.data', 12)
+            ->has('products.data', 10)
             ->where('products.current_page', 1)
-            ->where('products.per_page', 12)
+            ->where('products.per_page', 10)
             ->where('products.last_page', 2)
             ->where('products.total', 14)
             ->where('filteredProductCount', 14)
@@ -43,7 +43,7 @@ test('shop paginates active products twelve at a time and exposes the filtered t
     $this->get(route('shop', ['page' => 2]))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->has('products.data', 2)
+            ->has('products.data', 4)
             ->where('products.current_page', 2)
             ->where('filteredProductCount', 14)
         );
@@ -75,7 +75,7 @@ test('shop total and pagination are calculated after all selected filters', func
     $this->get(route('shop', $filters))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->has('products.data', 12)
+            ->has('products.data', 10)
             ->where('products.last_page', 2)
             ->where('products.total', 13)
             ->where('filteredProductCount', 13)
@@ -85,7 +85,7 @@ test('shop total and pagination are calculated after all selected filters', func
     $this->get(route('shop', [...$filters, 'page' => 2]))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->has('products.data', 1)
+            ->has('products.data', 3)
             ->where('products.total', 13)
             ->where('filteredProductCount', 13)
         );

@@ -20,7 +20,7 @@ class TicketController extends Controller
             'tickets' => Ticket::with('user:id,first_name,last_name,phone_number')
                 ->withCount('messages')
                 ->latest('updated_at')
-                ->paginate(25),
+                ->paginate(10),
         ]);
     }
 

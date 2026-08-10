@@ -27,7 +27,7 @@ class OrderController extends Controller
             'orders' => Order::withCount('items')
                 ->withSum('items', 'quantity')
                 ->latest()
-                ->paginate(25),
+                ->paginate(10),
             'orderProducts' => Product::query()
                 ->where('is_active', true)
                 ->where('stock', '>', 0)

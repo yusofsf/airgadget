@@ -117,8 +117,8 @@ test('category and tag sitemap urls are real indexable pages', function () {
             ->component('Storefront')
             ->where('view', 'tag')
             ->where('selectedTag.slug', 'tutorial')
-            ->where('articles.0.id', $article->id)
-            ->where('products.0.id', $product->id)
+            ->where('articles.data.0.id', $article->id)
+            ->where('products.data.0.id', $product->id)
         );
 
     $this->get(route('article-categories.show', $articleCategory))

@@ -16,7 +16,7 @@ class UserController extends Controller
             'users' => User::query()
                 ->select(['id', 'first_name', 'last_name', 'phone_number', 'email', 'is_admin', 'created_at'])
                 ->latest('id')
-                ->paginate(25),
+                ->paginate(10),
         ]);
     }
 }
