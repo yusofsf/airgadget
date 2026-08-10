@@ -12,6 +12,7 @@ use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\FavoriteController;
 use App\Http\Controllers\OrderTrackingController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\TicketController;
@@ -40,6 +41,10 @@ Route::get('/orders/{order}/invoice/{token}/pdf', [CheckoutController::class, 'i
 Route::get('/payments/zarinpal/callback/{order}/{token}', [CheckoutController::class, 'callback'])->name('payments.zarinpal.callback');
 Route::get('/track-order', OrderTrackingController::class)->middleware('throttle:20,1')->name('orders.track');
 Route::middleware('auth')->group(function () {
+    Route::get('/dashboard', fn () => redirect()->route('account'))->name('dashboard');
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::get('/checkout', [StoreController::class, 'checkout'])->name('checkout');
     Route::post('/checkout', [CheckoutController::class, 'store'])->middleware('throttle:10,1')->name('checkout.store');
     Route::get('/account', [StoreController::class, 'account'])->name('account');

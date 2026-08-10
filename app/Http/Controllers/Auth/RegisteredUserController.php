@@ -43,14 +43,13 @@ class RegisteredUserController extends Controller
             'phone_number.unique' => 'این شماره موبایل قبلاً ثبت شده است.',
         ]);
 
-        $isAdmin = hash_equals(Phone::normalize(config('admin.phone')), $validated['phone_number']);
         $attributes = [
             'first_name' => $validated['first_name'],
             'last_name' => $validated['last_name'],
             'phone_number' => $validated['phone_number'],
             'email' => $validated['email'] ?? null,
             'password' => Hash::make($validated['password']),
-            'is_admin' => $isAdmin,
+            'is_admin' => false,
         ];
 
         if (Schema::hasColumn('users', 'name')) {
@@ -62,6 +61,6 @@ class RegisteredUserController extends Controller
         event(new Registered($user));
         Auth::login($user);
 
-        return redirect()->route($isAdmin ? 'admin' : 'account');
+        return redirect()->route('account');
     }
 }

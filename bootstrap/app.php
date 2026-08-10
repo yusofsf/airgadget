@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Middleware\EnforceHttps;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\LogStoreActivity;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetSeoHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -16,8 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->web(
-            prepend: [LogStoreActivity::class],
+            prepend: [EnforceHttps::class, LogStoreActivity::class],
             append: [
+                SecurityHeaders::class,
                 SetSeoHeaders::class,
                 HandleInertiaRequests::class,
                 AddLinkHeadersForPreloadedAssets::class,

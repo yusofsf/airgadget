@@ -8,22 +8,18 @@ test('login screen can be rendered', function () {
     $this->get('/login')->assertOk();
 });
 
-test('admin can set a password on the first login', function () {
+test('admin setup cannot be reached from the public web', function () {
     $this->post('/login/identify', ['phone' => '۰۹۱۲۰۰۰۰۰۰۰'])
         ->assertSessionHasNoErrors()
         ->assertRedirect('/login');
 
-    $response = $this->post('/admin/setup-password', [
+    $this->post('/admin/setup-password', [
         'password' => 'Admin12345',
         'password_confirmation' => 'Admin12345',
-    ]);
+    ])->assertNotFound();
 
-    $admin = User::where('phone_number', '09120000000')->firstOrFail();
-
-    expect($admin->is_admin)->toBeTrue()
-        ->and(Hash::check('Admin12345', $admin->password))->toBeTrue();
-    $this->assertAuthenticatedAs($admin);
-    $response->assertRedirect('/admin');
+    expect(User::where('phone_number', '09120000000')->exists())->toBeFalse();
+    $this->assertGuest();
 });
 
 test('admin can log in later using mobile and password', function () {

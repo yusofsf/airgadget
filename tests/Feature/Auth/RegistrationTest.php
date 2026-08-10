@@ -39,3 +39,17 @@ test('email is accepted but remains optional during registration', function () {
 
     expect(User::firstOrFail()->email)->toBe('sara@example.com');
 });
+
+test('registration can never grant administrator privileges', function () {
+    config(['admin.phone' => '09120000000']);
+
+    $this->post('/register', [
+        'first_name' => 'Test',
+        'last_name' => 'User',
+        'phone_number' => '09120000000',
+        'password' => 'password',
+        'password_confirmation' => 'password',
+    ])->assertRedirect(route('account', absolute: false));
+
+    expect(User::firstOrFail()->is_admin)->toBeFalse();
+});

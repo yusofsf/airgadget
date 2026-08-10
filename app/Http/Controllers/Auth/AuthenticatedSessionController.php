@@ -7,7 +7,6 @@ use App\Http\Requests\Auth\LoginRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rules\Password;
@@ -29,17 +28,15 @@ class AuthenticatedSessionController extends Controller
         }
 
         $phone = $request->session()->get('login.phone');
-        $adminPhone = Phone::normalize(config('admin.phone'));
-        $userExists = $phone ? User::where('phone_number', $phone)->exists() : false;
         $mode = ! $phone
             ? 'identify'
-            : (($phone === $adminPhone && ! $userExists) ? 'setup' : ($userExists ? 'login' : 'unregistered'));
+            : 'login';
 
         return Inertia::render('Auth/Login', [
             'status' => session('status'),
             'mode' => $mode,
             'phone' => $phone,
-            'registered' => $userExists,
+            'registered' => false,
         ]);
     }
 
@@ -66,15 +63,13 @@ class AuthenticatedSessionController extends Controller
         $request->session()->regenerate();
 
         $user = $request->user();
-        if (hash_equals(Phone::normalize(config('admin.phone')), $user->phone_number) && ! $user->is_admin) {
-            $user->forceFill(['is_admin' => true])->save();
-        }
-
         return redirect()->intended($user->is_admin ? route('admin', absolute: false) : route('account', absolute: false));
     }
 
-    public function setupAdminPassword(Request $request): RedirectResponse
+    private function setupAdminPassword(Request $request): RedirectResponse
     {
+        abort(404);
+
         $phone = Phone::normalize($request->session()->get('login.phone'));
         $adminPhone = Phone::normalize(config('admin.phone'));
 
