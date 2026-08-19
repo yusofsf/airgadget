@@ -11,6 +11,8 @@ use Illuminate\Http\Response;
 
 class SitemapController extends Controller
 {
+    private const MINIMUM_TAG_ITEMS_FOR_SITEMAP = 2;
+
     public function __invoke(): Response
     {
         $urls = collect([
@@ -18,8 +20,6 @@ class SitemapController extends Controller
             $this->sitemapUrl(route('shop')),
             $this->sitemapUrl(route('articles.index')),
             $this->sitemapUrl(route('about')),
-            $this->sitemapUrl(route('contact')),
-            $this->sitemapUrl(route('terms')),
         ]);
 
         Category::query()
@@ -58,8 +58,21 @@ class SitemapController extends Controller
 
         Tag::query()
             ->where(fn ($query) => $query
-                ->whereHas('articles', fn ($articles) => $articles->where('is_published', true))
-                ->orWhereHas('products', fn ($products) => $products->where('is_active', true)))
+                ->whereHas(
+                    'articles',
+                    fn ($articles) => $articles->where('is_published', true),
+                    '>=',
+                    self::MINIMUM_TAG_ITEMS_FOR_SITEMAP,
+                )
+                ->orWhereHas(
+                    'products',
+                    fn ($products) => $products->where('is_active', true),
+                    '>=',
+                    self::MINIMUM_TAG_ITEMS_FOR_SITEMAP,
+                )
+                ->orWhere(fn ($mixedContent) => $mixedContent
+                    ->whereHas('articles', fn ($articles) => $articles->where('is_published', true))
+                    ->whereHas('products', fn ($products) => $products->where('is_active', true))))
             ->withMax(['articles' => fn ($query) => $query->where('is_published', true)], 'updated_at')
             ->withMax(['products' => fn ($query) => $query->where('is_active', true)], 'updated_at')
             ->get()

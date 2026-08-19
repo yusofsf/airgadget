@@ -42,6 +42,20 @@ test('dynamic sitemap contains public categories products articles and tags', fu
     $publishedArticle->tags()->attach($tag);
     $activeProduct->tags()->attach($tag);
 
+    $secondActiveProduct = Product::create([
+        'category_id' => $category->id,
+        'name' => 'هدفون فعال دوم',
+        'slug' => 'second-active-headphone',
+        'sku' => 'ACTIVE-2',
+        'price' => 1100000,
+        'stock' => 1,
+        'is_active' => true,
+    ]);
+    $secondActiveProduct->tags()->attach($tag);
+
+    $thinTag = Tag::create(['name' => 'برچسب کم‌محتوا', 'slug' => 'thin-tag']);
+    $activeProduct->tags()->attach($thinTag);
+
     $hiddenTag = Tag::create(['name' => 'مخفی', 'slug' => 'hidden-tag']);
     $draftArticle = Article::create([
         'title' => 'پیش‌نویس',
@@ -64,6 +78,7 @@ test('dynamic sitemap contains public categories products articles and tags', fu
         ->and($content)->toContain(route('articles.show', $publishedArticle))
         ->and($content)->toContain(route('article-categories.show', $articleCategory))
         ->and($content)->toContain(route('tags.show', $tag))
+        ->and($content)->not->toContain(route('tags.show', $thinTag))
         ->and($content)->not->toContain(route('products.show', $hiddenProduct))
         ->and($content)->not->toContain(route('articles.show', $draftArticle))
         ->and($content)->not->toContain(route('tags.show', $hiddenTag));
