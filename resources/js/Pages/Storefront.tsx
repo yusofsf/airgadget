@@ -1250,7 +1250,9 @@ function Articles({ articles, articleCategories, selectedArticleCategory }: { ar
             <div className="article-grid">
                 {items.length ? items.map((article) => (
                     <article className="article" key={article.id}>
-                        {article.image ? <img src={article.image} alt={article.title} loading="lazy" /> : <div className="article-image" />}
+                        <div className="article-media">
+                            {article.image ? <img src={article.image} alt={article.title} loading="lazy" decoding="async" /> : <div className="article-image" />}
+                        </div>
                         <small>{article.category?.name || 'مجله ایرگجت'}</small>
                         <h2>{article.title}</h2>
                         <p>{article.excerpt || 'نکات کاربردی و اطلاعات دقیق برای انتخاب بهتر لوازم جانبی.'}</p>
@@ -1290,7 +1292,9 @@ function TagLanding({ tag, products, articles, add }: { tag: Tag; products: Pagi
             <div className="article-grid">
                 {articleItems.length ? articleItems.map((article) => (
                     <article className="article" key={article.id}>
-                        {article.image ? <img src={article.image} alt={article.title} loading="lazy" /> : <div className="article-image" />}
+                        <div className="article-media">
+                            {article.image ? <img src={article.image} alt={article.title} loading="lazy" decoding="async" /> : <div className="article-image" />}
+                        </div>
                         <small>{article.category?.name || 'مجله ایرگجت'}</small>
                         <h3>{article.title}</h3>
                         <p>{article.excerpt}</p>
@@ -1312,7 +1316,11 @@ function ArticleDetail({ article }: { article: Article }) {
         <main className="page article-detail">
             <em>{article.category ? <Link href={route('article-categories.show', article.category.slug)}>{article.category.name}</Link> : 'مجله ایرگجت'}</em>
             <h1>{article.title}</h1>
-            {article.image && <img src={article.image} alt={article.title} />}
+            {article.image && (
+                <figure className="article-cover">
+                    <img src={article.image} alt={article.title} decoding="async" />
+                </figure>
+            )}
             {article.excerpt && <p className="lead">{article.excerpt}</p>}
             <article>{article.body}</article>
             {article.tags && article.tags.length > 0 && (
@@ -1973,7 +1981,7 @@ function Admin({
                         <textarea value={articleForm.data.meta_description} onChange={(event) => articleForm.setData('meta_description', event.target.value)} placeholder="توضیحات متا مقاله" />
                         <label className="upload-box">
                             <span>عکس اصلی مقاله</span>
-                            <small>این عکس در لیست مقاله‌ها و Open Graph استفاده می‌شود.</small>
+                            <small>نسبت پیشنهادی ۱۶:۹ و رزولوشن ۱۶۰۰×۹۰۰ پیکسل (حداقل ۱۲۰۰×۶۷۵)؛ حداکثر حجم ۴ مگابایت.</small>
                             <span className="file-picker-button">انتخاب تصویر</span>
                             <input
                                 type="file"
