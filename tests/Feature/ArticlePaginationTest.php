@@ -5,7 +5,7 @@ use App\Models\ArticleCategory;
 use App\Models\Tag;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('magazine paginates published articles ten at a time without top-level tags', function () {
+test('magazine paginates published articles six at a time without top-level tags', function () {
     $category = ArticleCategory::create([
         'name' => 'راهنمای خرید',
         'slug' => 'buying-guides',
@@ -28,9 +28,9 @@ test('magazine paginates published articles ten at a time without top-level tags
         ->assertInertia(fn (Assert $page) => $page
             ->component('Storefront')
             ->where('view', 'articles')
-            ->has('articles.data', 10)
+            ->has('articles.data', 6)
             ->where('articles.current_page', 1)
-            ->where('articles.per_page', 10)
+            ->where('articles.per_page', 6)
             ->where('articles.last_page', 2)
             ->where('articles.total', 12)
             ->missing('tags')
@@ -39,13 +39,13 @@ test('magazine paginates published articles ten at a time without top-level tags
     $this->get(route('articles.index', ['page' => 2]))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->has('articles.data', 2)
+            ->has('articles.data', 6)
             ->where('articles.current_page', 2)
-            ->where('articles.per_page', 10)
+            ->where('articles.per_page', 6)
         );
 });
 
-test('topic pages use the same ten-article pagination', function () {
+test('topic pages use the same six-article pagination', function () {
     $category = ArticleCategory::create([
         'name' => 'بررسی تخصصی',
         'slug' => 'reviews',
@@ -66,8 +66,8 @@ test('topic pages use the same ten-article pagination', function () {
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->where('selectedArticleCategory.id', $category->id)
-            ->has('articles.data', 10)
-            ->where('articles.per_page', 10)
+            ->has('articles.data', 6)
+            ->where('articles.per_page', 6)
             ->where('articles.last_page', 2)
             ->missing('tags')
         );

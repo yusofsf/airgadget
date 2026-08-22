@@ -108,7 +108,7 @@ class StoreController extends Controller
                 });
             });
 
-        $products = $productsQuery->latest()->paginate(10)->withQueryString();
+        $products = $productsQuery->latest()->paginate(6)->withQueryString();
 
         return Inertia::render('Storefront', [
             'view' => 'shop',
@@ -144,7 +144,7 @@ class StoreController extends Controller
     {
         return Inertia::render('Storefront', [
             'view' => 'articles',
-            'articles' => Article::with(['tags', 'category'])->where('is_published', true)->latest('published_at')->paginate(10),
+            'articles' => Article::with(['tags', 'category'])->where('is_published', true)->latest('published_at')->paginate(6),
             'articleCategories' => ArticleCategory::whereHas('articles', fn ($query) => $query->where('is_published', true))->orderBy('name')->get(['id', 'name', 'slug']),
         ]);
     }
@@ -153,7 +153,7 @@ class StoreController extends Controller
     {
         return Inertia::render('Storefront', [
             'view' => 'articles',
-            'articles' => Article::with(['tags', 'category'])->where('is_published', true)->whereBelongsTo($articleCategory, 'category')->latest('published_at')->paginate(10),
+            'articles' => Article::with(['tags', 'category'])->where('is_published', true)->whereBelongsTo($articleCategory, 'category')->latest('published_at')->paginate(6),
             'articleCategories' => ArticleCategory::whereHas('articles', fn ($query) => $query->where('is_published', true))->orderBy('name')->get(['id', 'name', 'slug']),
             'selectedArticleCategory' => $articleCategory->only([
                 'id', 'name', 'slug', 'description', 'meta_title', 'meta_description',
